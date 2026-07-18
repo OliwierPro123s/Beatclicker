@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BeatClicker - Professional Edition</title>
-    <!-- Import zajebistej, futurystycznej cz Czcionki Orbitron z Google Fonts -->
+    <title>BeatClicker - Render Ultimate Professional Edition</title>
+    <!-- Import futurystycznej czcionki Orbitron z Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Segoe+UI:wght@400;700;800&display=swap" rel="stylesheet">
@@ -35,6 +35,86 @@
             z-index: 2;
             cursor: none;
         }
+
+        /* AKTYWNY PANEL LOGOWANIA NA START */
+        #auth-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, #170f2b 0%, #06040a 100%);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: opacity 0.5s ease;
+        }
+
+        .auth-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            padding: 2.5rem;
+            border-radius: 16px;
+            backdrop-filter: blur(10px);
+            width: 380px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.6);
+            text-align: center;
+        }
+
+        .auth-card h2 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2rem;
+            margin-bottom: 1.5rem;
+            text-shadow: 0 0 10px #ff007f;
+            letter-spacing: 2px;
+        }
+
+        .auth-input {
+            width: 100%;
+            padding: 0.8rem;
+            background: #111;
+            border: 1px solid #444;
+            color: #fff;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            font-size: 1rem;
+        }
+
+        .auth-input:focus {
+            outline: none;
+            border-color: #00ffff;
+            box-shadow: 0 0 8px rgba(0, 255, 255, 0.4);
+        }
+
+        .remember-me-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 1.5rem;
+            justify-content: flex-start;
+            font-size: 0.9rem;
+            color: #ccc;
+            cursor: pointer;
+        }
+
+        .auth-btn {
+            width: 100%;
+            padding: 0.9rem;
+            background: linear-gradient(45deg, #ff007f, #7f00ff);
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 0 15px rgba(255,0,127,0.4);
+            transition: transform 0.2s;
+        }
+
+        .auth-btn:hover { transform: scale(1.02); }
+        #auth-error { color: #ff0055; margin-top: 1rem; font-size: 0.9rem; min-height: 20px; }
 
         /* Menu Główne - Nowy Układ Asymetryczny */
         #menu {
@@ -172,6 +252,68 @@
             animation: glitchFadeIn 0.35s ease-out forwards;
         }
 
+        /* OKNO RANKINGU (TOPKI) */
+        .leaderboard-box {
+            background: rgba(255, 255, 255, 0.03);
+            border: 2px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            width: 320px;
+            height: 440px;
+            margin-left: 5%;
+            padding: 1.5rem;
+            z-index: 12;
+            opacity: 0;
+            animation: panelFadeIn 0.8s ease 0.8s forwards;
+            display: flex;
+            flex-direction: column;
+            backdrop-filter: blur(8px);
+        }
+
+        .leaderboard-box h3 {
+            font-family: 'Orbitron', sans-serif;
+            text-transform: uppercase;
+            font-size: 1.3rem;
+            letter-spacing: 2px;
+            color: #00ffff;
+            margin-bottom: 1.2rem;
+            text-align: center;
+            text-shadow: 0 0 8px rgba(0, 255, 255, 0.5);
+        }
+
+        .leaderboard-list {
+            list-style: none;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+
+        .leaderboard-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.6rem 0.8rem;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-size: 0.95rem;
+        }
+        .leaderboard-item:nth-child(1) { color: #ffcc00; font-weight: bold; text-shadow: 0 0 5px rgba(255,204,0,0.4); }
+        .leaderboard-item:nth-child(2) { color: #cccccc; }
+        .leaderboard-item:nth-child(3) { color: #cd7f32; }
+
+        /* DYNAMICZNY LICZNIK GRACZY W PRAWYM DOLNYM ROGU */
+        #online-counter {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            z-index: 15;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1rem;
+            color: #00ffcc;
+            text-shadow: 0 0 8px rgba(0, 255, 204, 0.6);
+            background: rgba(5, 3, 8, 0.75);
+            padding: 6px 16px;
+            border-radius: 20px;
+            border: 1px solid rgba(0, 255, 204, 0.3);
+            pointer-events: none;
+        }
+
         .input-group {
             background: rgba(255, 255, 255, 0.04);
             padding: 0.9rem;
@@ -232,7 +374,7 @@
             cursor: pointer;
         }
 
-        input[type="file"], input[type="text"], select {
+        input[type="file"], input[type="text"], input[type="password"], select {
             display: block;
             width: 100%;
             color: #fff;
@@ -243,12 +385,12 @@
             font-size: 0.9rem;
         }
 
-        input[type="text"] {
+        input[type="text"], input[type="password"] {
             border: 1px solid #333;
             transition: border-color 0.3s;
         }
 
-        input[type="text"]:focus {
+        input[type="text"]:focus, input[type="password"]:focus {
             outline: none;
             border-color: #00ffff;
             box-shadow: 0 0 5px rgba(0, 255, 255, 0.3);
@@ -490,13 +632,29 @@
 
     <canvas id="game-canvas"></canvas>
 
+    <!-- ROZBUDOWANE OKNO LOGOWANIA / REJESTRACJI -->
+    <div id="auth-overlay">
+        <div class="auth-card">
+            <h2>LOGOWANIE GRACZA</h2>
+            <input type="text" id="auth-username" class="auth-input" placeholder="Nazwa użytkownika (Nick)">
+            <input type="password" id="auth-password" class="auth-input" placeholder="Hasło zabezpieczające">
+            <div class="remember-me-container" onclick="toggleRememberCheckbox()">
+                <input type="checkbox" id="auth-remember" style="cursor:pointer;">
+                <label for="auth-remember" style="cursor:pointer;">Zapamiętaj mnie</label>
+            </div>
+            <button class="auth-btn" onclick="submitAuth()">ZALOGUJ / ZAREJESTRUJ</button>
+            <div id="auth-error"></div>
+        </div>
+    </div>
+
     <!-- SYSTEM AUDIO DLA ELEMENTÓW INTERFEJSU -->
     <audio id="menu-audio" src="https://vgmtreasurechest.com/soundtracks/demonic-mahjong-android-ios-macos-mobile-steam-windows-gamerip-2025/zusdrcmwnu/Boss%20Match.mp3" loop></audio>
     <audio id="defeat-audio" src="https://vgmtreasurechest.com/soundtracks/demonic-mahjong-android-ios-macos-mobile-steam-windows-gamerip-2025/ouybhvhycw/Defeat.mp3" loop></audio>
     <audio id="victory-audio" src="https://vgmtreasurechest.com/soundtracks/demonic-mahjong-android-ios-macos-mobile-steam-windows-gamerip-2025/wnxkbuqubd/Normal%20Match.mp3" loop></audio>
-    
-    <!-- Nowy dźwięk Whoosh / Swipe z zewnętrznego CDN -->
     <audio id="swipe-audio" src="https://cdn.pixabay.com/download/audio/2025/08/14/audio_25b91a67d4.mp3?filename=soundreality-whoosh-bamboo-389752.mp3"></audio>
+
+    <!-- LICZNIK KLIKACZY W PRAWYM DOLNYM ROGU -->
+    <div id="online-counter">Liczba Klikaczy: 0</div>
 
     <!-- MENU GŁÓWNE -->
     <div id="menu">
@@ -579,6 +737,14 @@
                 </div>
             </div>
         </div>
+
+        <!-- SEKCJA RANKINGOWA TOPKI DOŁĄCZONA DO MENU -->
+        <div class="leaderboard-box">
+            <h3>🏆 TOP 10 PUNKTÓW</h3>
+            <ul id="leaderboard-dom-list" class="leaderboard-list">
+                <li style="text-align:center;color:#666;padding-top:20px;">Ładowanie rankingu...</li>
+            </ul>
+        </div>
     </div>
 
     <!-- EKRAN GRY -->
@@ -614,6 +780,114 @@
     </div>
 
     <script>
+        // === ZMIEŃ TEN ADRES NA ADRES SWOJEJ USŁUGI WEBSOCKET NA RENDER ===
+        const SERVER_URL = "ws://localhost:8080"; 
+
+        let socket = null;
+        let myUsername = "";
+        let playerPoints = 0;
+
+        const authOverlay = document.getElementById('auth-overlay');
+        const authUserIn = document.getElementById('auth-username');
+        const authPasswordIn = document.getElementById('auth-password');
+        const authRememberIn = document.getElementById('auth-remember');
+        const authError = document.getElementById('auth-error');
+        const onlineCounter = document.getElementById('online-counter');
+        const leaderboardList = document.getElementById('leaderboard-dom-list');
+
+        // Funkcja nawiązująca i kontrolująca stabilność połączenia z serwerem
+        function connectToServer() {
+            socket = new WebSocket(SERVER_URL);
+
+            socket.onopen = () => {
+                console.log("Połączono z serwerem Render.");
+                // Sprawdzanie czy użytkownik zaznaczył opcję "Zapamiętaj mnie" w przeszłości
+                const savedUser = localStorage.getItem('bc_remember_user');
+                const savedPass = localStorage.getItem('bc_remember_pass');
+                if (savedUser && savedPass) {
+                    socket.send(JSON.stringify({ type: 'LOGIN', username: savedUser, password: savedPass }));
+                }
+            };
+
+            socket.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                
+                if (msg.type === 'ONLINE_COUNT') {
+                    onlineCounter.innerText = `Liczba Klikaczy: ${msg.count}`;
+                }
+                
+                if (msg.type === 'LEADERBOARD') {
+                    renderLeaderboard(msg.data);
+                }
+
+                if (msg.type === 'LOGIN_SUCCESS') {
+                    myUsername = msg.username;
+                    playerPoints = msg.points;
+                    globalPointsVal.innerText = playerPoints;
+                    
+                    if (authRememberIn.checked) {
+                        localStorage.setItem('bc_remember_user', authUserIn.value);
+                        localStorage.setItem('bc_remember_pass', authPasswordIn.value);
+                    } else {
+                        localStorage.removeItem('bc_remember_user');
+                        localStorage.removeItem('bc_remember_pass');
+                    }
+                    
+                    authOverlay.style.opacity = 0;
+                    setTimeout(() => authOverlay.style.display = 'none', 500);
+                    
+                    if (menuAudio.paused && menuAudio.src !== "") {
+                        menuAudio.play().catch(e => console.log(e));
+                    }
+                }
+
+                if (msg.type === 'LOGIN_ERROR') {
+                    authError.innerText = msg.message;
+                }
+            };
+
+            socket.onclose = () => {
+                console.log("Rozłączono. Ponawianie próby połączenia za 2.5 sekundy...");
+                setTimeout(connectToServer, 2500);
+            };
+        }
+
+        function toggleRememberCheckbox() {
+            authRememberIn.checked = !authRememberIn.checked;
+        }
+
+        function submitAuth() {
+            const user = authUserIn.value.trim();
+            const pass = authPasswordIn.value.trim();
+            if (user.length < 3 || pass.length < 4) {
+                authError.innerText = "Nick (min. 3 znaki), Hasło (min. 4 znaki)!";
+                return;
+            }
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ type: 'LOGIN', username: user, password: pass }));
+            } else {
+                authError.innerText = "Brak aktywnego połączenia z serwerem!";
+            }
+        }
+
+        function renderLeaderboard(data) {
+            leaderboardList.innerHTML = "";
+            if (data.length === 0) {
+                leaderboardList.innerHTML = `<li style="text-align:center;color:#666;padding-top:20px;">Brak wpisów w bazie</li>`;
+                return;
+            }
+            data.forEach((player, idx) => {
+                const li = document.createElement('li');
+                li.className = 'leaderboard-item';
+                li.innerHTML = `<span>${idx + 1}. ${player.username}</span><span>${player.points} pkt</span>`;
+                leaderboardList.appendChild(li);
+            });
+        }
+
+        // Zainicjowanie systemu sieciowego na start pliku
+        connectToServer();
+
+        // ELEMENTY GRY I LOGIKA SILNIKA DŹWIĘKOWEGO ORAZ WIZUALNEGO
         const menu = document.getElementById('menu');
         const audioInput = document.getElementById('audio-input');
         const audioUrl = document.getElementById('audio-url');
@@ -653,9 +927,6 @@
         const victoryAudio = document.getElementById('victory-audio');
         const swipeAudio = document.getElementById('swipe-audio');
 
-        let playerPoints = parseInt(localStorage.getItem('beatclicker_points')) || 0;
-        globalPointsVal.innerText = playerPoints;
-
         volumeMusicInput.value = localStorage.getItem('beatclicker_vol_music') || 80;
         volumeSfxInput.value = localStorage.getItem('beatclicker_vol_sfx') || 70;
         themeColorInput.value = localStorage.getItem('beatclicker_theme_key') || 'rainbow';
@@ -666,7 +937,7 @@
             menuAudio.volume = currentVol;
             defeatAudio.volume = currentVol;
             victoryAudio.volume = currentVol;
-            swipeAudio.volume = currentSfxVol; // Sterowanie nowym dźwiękiem z menu
+            swipeAudio.volume = currentSfxVol;
         }
         updateGlobalAudioVolumes();
 
@@ -719,7 +990,6 @@
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
 
-        // Odtwarzanie nowego dźwięku Whoosh ze skrajnego źródła
         function playSwipeSound() {
             const sfxVolume = parseFloat(volumeSfxInput.value) / 100;
             if (sfxVolume <= 0) return;
@@ -794,7 +1064,6 @@
             } catch(e){}
         }
 
-        // Zmiana zakładki ze Swipe + Glitch Effect
         function switchTab(target) {
             const buttons = document.querySelectorAll('.tab-btn');
             const targetBtn = Array.from(buttons).find(b => b.innerText.toLowerCase() === target);
@@ -866,7 +1135,7 @@
         });
 
         window.addEventListener('click', () => {
-            if (!gameActive && !isGameOver && !isVictory && menuAudio.paused && menuAudio.src !== "") {
+            if (myUsername !== "" && !gameActive && !isGameOver && !isVictory && menuAudio.paused && menuAudio.src !== "") {
                 menuAudio.play().catch(e => console.log(e));
             }
         }, { once: false });
@@ -1222,15 +1491,19 @@
                 finalEarnedPoints = basePoints * multiplier;
             }
 
-            playerPoints += finalEarnedPoints;
-            localStorage.setItem('beatclicker_points', playerPoints);
+            playerPoints += Math.floor(finalEarnedPoints);
             globalPointsVal.innerText = playerPoints;
-            vicScoreVal.innerText = score; earnedPointsVal.innerText = finalEarnedPoints;
+            vicScoreVal.innerText = score; earnedPointsVal.innerText = Math.floor(finalEarnedPoints);
             
             victoryAudio.currentTime = 0;
             victoryAudio.play().catch(e => console.log(e));
 
             victoryScreen.style.display = 'flex';
+
+            // Automatyczna synchronizacja nowo zdobytych punktów z serwerem
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.send(JSON.stringify({ type: 'UPDATE_POINTS', points: playerPoints }));
+            }
         }
 
         function goToMenu() {
@@ -1242,7 +1515,6 @@
             defeatAudio.pause(); defeatAudio.currentTime = 0;
             victoryAudio.pause(); victoryAudio.currentTime = 0;
 
-            // Zresetowanie menu do stanu początkowego
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active-tab'));
             document.querySelectorAll('.menu-section').forEach(sec => sec.classList.remove('active-section'));
 
