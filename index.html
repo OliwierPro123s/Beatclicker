@@ -81,7 +81,7 @@
             transform: translateX(-100px);
         }
 
-        #menu-points-display {
+        #menu-points-display, #menu-elo-display {
             font-size: 1.2rem;
             color: #00ffcc;
             font-weight: bold;
@@ -252,6 +252,149 @@
             outline: none;
             border-color: #00ffff;
             box-shadow: 0 0 5px rgba(0, 255, 255, 0.3);
+        }
+
+
+        .tab-btn:nth-child(3) { animation: btnIntro 1s cubic-bezier(0.15, 0.85, 0.35, 1) 0.7s forwards, btnFloat 4s ease-in-out infinite 1s; }
+
+        .duel-tabs {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+            margin-bottom: 14px;
+        }
+
+        .duel-tab-btn {
+            flex: 1;
+            padding: 0.8rem 1rem;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.15);
+            background: rgba(255,255,255,0.04);
+            color: #eee;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.25s ease;
+        }
+
+        .duel-tab-btn.active {
+            background: linear-gradient(45deg, rgba(255,0,127,0.35), rgba(127,0,255,0.25));
+            border-color: #ff007f;
+            box-shadow: 0 0 16px rgba(255,0,127,0.35);
+        }
+
+        .duel-panel {
+            display: none;
+            width: 100%;
+        }
+
+        .duel-panel.active {
+            display: block;
+        }
+
+        .duel-status {
+            margin-top: 12px;
+            min-height: 24px;
+            color: #00ffff;
+            font-size: 0.95rem;
+            text-align: center;
+            text-shadow: 0 0 8px rgba(0,255,255,0.35);
+        }
+
+        .duel-status.error {
+            color: #ff5577;
+            text-shadow: 0 0 8px rgba(255,85,119,0.35);
+        }
+
+        .duel-action-btn {
+            width: 100%;
+            padding: 0.95rem 1rem;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 8px;
+            color: #fff;
+            background: linear-gradient(45deg, #ff007f, #7f00ff);
+            box-shadow: 0 0 20px rgba(255,0,127,0.35);
+        }
+
+        .duel-action-btn.secondary {
+            background: linear-gradient(45deg, #333, #444);
+            box-shadow: none;
+            color: #ddd;
+        }
+
+        .duel-lobby-list {
+            width: 100%;
+            max-height: 250px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding-right: 4px;
+        }
+
+        .duel-lobby-item {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 10px;
+            align-items: center;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.10);
+            border-radius: 14px;
+            padding: 12px;
+        }
+
+        .duel-lobby-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+        }
+
+        .duel-lobby-top {
+            font-weight: 800;
+            color: #fff;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .duel-lobby-bottom {
+            font-size: 0.88rem;
+            color: #b9b9b9;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .duel-lobby-join {
+            border: none;
+            border-radius: 999px;
+            padding: 0.65rem 1rem;
+            font-weight: 800;
+            color: #fff;
+            cursor: pointer;
+            background: linear-gradient(45deg, #00ffff, #7f00ff);
+        }
+
+        .duel-empty {
+            text-align: center;
+            padding: 18px 10px;
+            color: #888;
+            border: 1px dashed rgba(255,255,255,0.12);
+            border-radius: 14px;
+        }
+
+        .duel-footnote {
+            margin-top: 10px;
+            font-size: 0.82rem;
+            color: #999;
+            text-align: center;
         }
 
         #start-btn {
@@ -662,11 +805,12 @@
     <div id="menu">
         <div class="menu-left-panel">
             <h1 class="game-logo">Beat<br>Clicker</h1>
-            <div id="menu-points-display">Zgromadzone Punkty: <span id="global-points-val">0</span></div>
+            <div id="menu-points-display">Zgromadzone Punkty: <span id="global-points-val">0</span> | ELO: <span id="global-elo-val">1000</span></div>
             
             <div class="menu-navigation">
                 <button class="tab-btn" onclick="switchTab('play')">GRAJ</button>
                 <button class="tab-btn" onclick="switchTab('settings')">USTAWIENIA</button>
+                <button class="tab-btn" onclick="switchTab('1vs1')">1VS1</button>
             </div>
         </div>
 
@@ -748,6 +892,38 @@
         </div>
 
     </div>
+
+            <!-- SEKCJA 1VS1 -->
+            <div id="section-1v1" class="menu-section">
+                <div class="input-group" style="margin-bottom: 14px;">
+                    <label style="margin-bottom: 0; font-size: 0.95rem; color: #00ffcc;">Tryb 1VS1</label>
+                    <div style="margin-top: 8px; color: #bbb; font-size: 0.9rem; line-height: 1.45;">
+                        Każdy gracz startuje od 1000 ELO. Gdy różnica jest duża, wygrany dostaje mniej, przegrany traci więcej.
+                        Przy identycznym ELO nikt nie zyskuje ani nie traci.
+                    </div>
+                </div>
+
+                <div class="duel-tabs">
+                    <button class="duel-tab-btn active" id="duel-tab-create" onclick="switchDuelPanel('create')">Stwórz grę</button>
+                    <button class="duel-tab-btn" id="duel-tab-join" onclick="switchDuelPanel('join')">Dołącz do gry</button>
+                </div>
+
+                <div id="duel-panel-create" class="duel-panel active">
+                    <div class="input-group">
+                        <label for="duel-url-input">Link do muzyki (URL):</label>
+                        <input type="text" id="duel-url-input" placeholder="https://twojastrona.pl/muzyka.mp3">
+                    </div>
+                    <button class="duel-action-btn" id="duel-create-btn" onclick="createDuelLobby()">Stwórz grę</button>
+                    <button class="duel-action-btn secondary" id="duel-cancel-btn" onclick="cancelDuelLobby()" style="display:none;">Anuluj oczekiwanie</button>
+                    <div id="duel-create-status" class="duel-status"></div>
+                </div>
+
+                <div id="duel-panel-join" class="duel-panel">
+                    <div id="duel-lobby-list" class="duel-lobby-list">
+                        <div class="duel-empty">Ładowanie listy gier 1VS1...</div>
+                    </div>
+                </div>
+            </div>
 
     <!-- EKRAN GRY -->
     <div id="game-container">
@@ -1681,5 +1857,540 @@
 
         startMasterLoop();
     </script>
+
+    <script>
+        (() => {
+            const globalEloVal = document.getElementById('global-elo-val');
+            const duelUrlInput = document.getElementById('duel-url-input');
+            const duelCreateBtn = document.getElementById('duel-create-btn');
+            const duelCancelBtn = document.getElementById('duel-cancel-btn');
+            const duelCreateStatus = document.getElementById('duel-create-status');
+            const duelLobbyList = document.getElementById('duel-lobby-list');
+            const duelTabCreate = document.getElementById('duel-tab-create');
+            const duelTabJoin = document.getElementById('duel-tab-join');
+            const duelPanelCreate = document.getElementById('duel-panel-create');
+            const duelPanelJoin = document.getElementById('duel-panel-join');
+
+            let playerElo = parseInt(localStorage.getItem('beatclicker_elo') || '1000', 10) || 1000;
+            let duelLobbies = [];
+            let duelModeActive = false;
+            let duelLobbyId = null;
+            let duelRole = null;
+            let duelResultSent = false;
+            let duelStartTimer = null;
+            let duelCurrentTrack = null;
+            let duelCurrentTitle = '';
+            let duelCurrentDuration = 0;
+            let duelCurrentOpponent = '';
+            let duelCurrentUrl = '';
+            let hookedSocket = null;
+
+            function updateEloDisplay() {
+                if (globalEloVal) globalEloVal.innerText = String(playerElo);
+            }
+            updateEloDisplay();
+
+            function setDuelStatus(text, isError = false) {
+                if (!duelCreateStatus) return;
+                duelCreateStatus.textContent = text || '';
+                duelCreateStatus.classList.toggle('error', !!isError);
+            }
+
+            function setDuelPanel(panel) {
+                const createActive = panel === 'create';
+                duelTabCreate?.classList.toggle('active', createActive);
+                duelTabJoin?.classList.toggle('active', !createActive);
+                duelPanelCreate?.classList.toggle('active', createActive);
+                duelPanelJoin?.classList.toggle('active', !createActive);
+            }
+
+            function escapeHtml(str) {
+                return String(str || '')
+                    .replaceAll('&', '&amp;')
+                    .replaceAll('<', '&lt;')
+                    .replaceAll('>', '&gt;')
+                    .replaceAll('"', '&quot;')
+                    .replaceAll("'", '&#39;');
+            }
+
+            function formatDuration(seconds) {
+                if (!Number.isFinite(seconds) || seconds <= 0) return '--:--';
+                const total = Math.floor(seconds);
+                const m = Math.floor(total / 60).toString().padStart(1, '0');
+                const s = (total % 60).toString().padStart(2, '0');
+                return `${m}:${s}`;
+            }
+
+            function titleFromUrl(url) {
+                try {
+                    const pathname = new URL(url).pathname.split('/').pop() || url;
+                    const noQuery = pathname.split('?')[0].split('#')[0];
+                    const noExt = noQuery.replace(/\.[^.]+$/, '');
+                    const decoded = decodeURIComponent(noExt);
+                    return decoded
+                        .replace(/[_-]+/g, ' ')
+                        .replace(/\s+/g, ' ')
+                        .trim() || 'Bez tytułu';
+                } catch {
+                    return (url || 'Bez tytułu').replace(/[_-]+/g, ' ').trim();
+                }
+            }
+
+            function loadAudioMetadata(url) {
+                return new Promise((resolve, reject) => {
+                    const audio = new Audio();
+                    audio.preload = 'metadata';
+                    audio.crossOrigin = 'anonymous';
+                    const timer = setTimeout(() => {
+                        audio.src = '';
+                        reject(new Error('Przekroczono czas ładowania metadanych'));
+                    }, 15000);
+
+                    audio.onloadedmetadata = () => {
+                        clearTimeout(timer);
+                        const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+                        resolve(duration);
+                    };
+                    audio.onerror = () => {
+                        clearTimeout(timer);
+                        reject(new Error('Nie można wczytać tego linku'));
+                    };
+                    audio.src = url;
+                });
+            }
+
+            function renderDuelLobbyList(list) {
+                duelLobbies = Array.isArray(list) ? list : [];
+                if (!duelLobbyList) return;
+
+                if (!duelLobbies.length) {
+                    duelLobbyList.innerHTML = '<div class="duel-empty">Brak aktywnych gier 1VS1.</div>';
+                    return;
+                }
+
+                duelLobbyList.innerHTML = duelLobbies.map(lobby => {
+                    const duration = formatDuration(lobby.duration || 0);
+                    const title = escapeHtml(lobby.title || 'Bez tytułu');
+                    const host = escapeHtml(lobby.host || '??');
+                    const id = escapeHtml(lobby.id);
+                    return `
+                        <div class="duel-lobby-item">
+                            <div class="duel-lobby-meta">
+                                <div class="duel-lobby-top">${host} • ${title}</div>
+                                <div class="duel-lobby-bottom">${duration}</div>
+                            </div>
+                            <button class="duel-lobby-join" onclick="joinDuelLobby('${id}')">Dołącz</button>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            function sendSocket(payload) {
+                if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+                socket.send(JSON.stringify(payload));
+                return true;
+            }
+
+            function hookSocket() {
+                if (!socket || socket === hookedSocket) return;
+                hookedSocket = socket;
+
+                socket.addEventListener('message', (event) => {
+                    let msg;
+                    try { msg = JSON.parse(event.data); } catch { return; }
+                    if (!msg || !msg.type) return;
+
+                    if (msg.type === '1V1_LOBBIES') {
+                        renderDuelLobbyList(msg.data || []);
+                    }
+
+                    if (msg.type === '1V1_LOBBY_CREATED') {
+                        duelLobbyId = msg.lobbyId;
+                        duelModeActive = true;
+                        duelResultSent = false;
+                        duelStartTimer && clearTimeout(duelStartTimer);
+                        setDuelStatus(`Utworzono grę. Czekasz na przeciwnika...`);
+                        duelCancelBtn.style.display = 'block';
+                        duelCreateBtn.disabled = true;
+                        duelUrlInput.disabled = true;
+                    }
+
+                    if (msg.type === '1V1_MATCH_STARTED') {
+                        if (duelStartTimer) clearTimeout(duelStartTimer);
+                        duelModeActive = true;
+                        duelLobbyId = msg.lobbyId;
+                        duelRole = msg.role || null;
+                        duelCurrentOpponent = msg.opponent || '';
+                        duelCurrentTrack = msg.trackUrl || '';
+                        duelCurrentTitle = msg.title || '';
+                        duelCurrentDuration = Number(msg.duration) || 0;
+                        duelResultSent = false;
+                        setDuelStatus(`Gra rozpoczęta: ${duelCurrentOpponent ? 'vs ' + duelCurrentOpponent : '1VS1'}.`);
+
+                        duelStartTimer = setTimeout(() => {
+                            startDuelGameSession({
+                                lobbyId: duelLobbyId,
+                                role: duelRole,
+                                opponent: duelCurrentOpponent,
+                                trackUrl: duelCurrentTrack,
+                                title: duelCurrentTitle,
+                                duration: duelCurrentDuration
+                            });
+                        }, Math.max(0, Number(msg.startInMs) || 1200));
+                    }
+
+                    if (msg.type === '1V1_RESULT') {
+                        if (typeof msg.newElo === 'number') {
+                            playerElo = msg.newElo;
+                            localStorage.setItem('beatclicker_elo', String(playerElo));
+                            updateEloDisplay();
+                        }
+
+                        const delta = Number(msg.delta || 0);
+                        const sign = delta > 0 ? '+' : '';
+                        setDuelStatus(`Wynik 1VS1: ${msg.outcome === 'win' ? 'Wygrałeś' : msg.outcome === 'loss' ? 'Przegrałeś' : 'Remis'} (${sign}${delta} ELO).`);
+                        duelModeActive = false;
+                        duelLobbyId = null;
+                        duelRole = null;
+                        duelResultSent = false;
+                        duelCreateBtn.disabled = false;
+                        duelCancelBtn.style.display = 'none';
+                        duelUrlInput.disabled = false;
+                    }
+
+                    if (msg.type === '1V1_ERROR') {
+                        setDuelStatus(msg.message || 'Błąd 1VS1.', true);
+                        duelCreateBtn.disabled = false;
+                        duelCancelBtn.style.display = 'none';
+                        duelUrlInput.disabled = false;
+                    }
+
+                    if (msg.type === '1V1_CANCELLED') {
+                        if (duelLobbyId && msg.lobbyId === duelLobbyId) {
+                            setDuelStatus('Gra została anulowana.');
+                            duelModeActive = false;
+                            duelLobbyId = null;
+                            duelRole = null;
+                            duelResultSent = false;
+                            duelCreateBtn.disabled = false;
+                            duelCancelBtn.style.display = 'none';
+                            duelUrlInput.disabled = false;
+                        }
+                    }
+                });
+            }
+
+            function sendLobbyLeave() {
+                if (!duelLobbyId) return;
+                sendSocket({ type: 'LEAVE_1V1_LOBBY', lobbyId: duelLobbyId });
+            }
+
+            window.switchDuelPanel = function (panel) {
+                setDuelPanel(panel);
+            };
+
+            window.createDuelLobby = async function () {
+                const url = duelUrlInput.value.trim();
+                if (!url) {
+                    setDuelStatus('Wklej link do muzyki.', true);
+                    return;
+                }
+                if (!myUsername) {
+                    setDuelStatus('Najpierw zaloguj się.', true);
+                    return;
+                }
+                if (duelModeActive || duelLobbyId) {
+                    setDuelStatus('Masz już aktywną grę 1VS1.', true);
+                    return;
+                }
+
+                try {
+                    duelCreateBtn.disabled = true;
+                    setDuelStatus('Wczytywanie metadanych muzyki...');
+                    const duration = await loadAudioMetadata(url);
+                    const title = titleFromUrl(url);
+
+                    const ok = sendSocket({
+                        type: 'CREATE_1V1_LOBBY',
+                        trackUrl: url,
+                        title,
+                        duration
+                    });
+
+                    if (!ok) {
+                        duelCreateBtn.disabled = false;
+                        setDuelStatus('Brak połączenia z serwerem.', true);
+                        return;
+                    }
+
+                    setDuelStatus(`Tworzysz grę: ${title} (${formatDuration(duration)}).`);
+                } catch (err) {
+                    duelCreateBtn.disabled = false;
+                    setDuelStatus(err.message || 'Nie udało się przygotować gry.', true);
+                }
+            };
+
+            window.cancelDuelLobby = function () {
+                if (!duelLobbyId) {
+                    setDuelStatus('Nie masz aktywnej gry do anulowania.', true);
+                    return;
+                }
+                sendLobbyLeave();
+                duelModeActive = false;
+                duelLobbyId = null;
+                duelRole = null;
+                duelResultSent = false;
+                duelCreateBtn.disabled = false;
+                duelCancelBtn.style.display = 'none';
+                duelUrlInput.disabled = false;
+                setDuelStatus('Oczekiwanie anulowane.');
+            };
+
+            window.joinDuelLobby = function (lobbyId) {
+                if (!myUsername) {
+                    setDuelStatus('Najpierw zaloguj się.', true);
+                    return;
+                }
+                if (!lobbyId) return;
+                if (duelModeActive || duelLobbyId) {
+                    setDuelStatus('Masz już aktywną grę 1VS1.', true);
+                    return;
+                }
+                const sent = sendSocket({ type: 'JOIN_1V1_LOBBY', lobbyId });
+                if (!sent) {
+                    setDuelStatus('Brak połączenia z serwerem.', true);
+                    return;
+                }
+                setDuelStatus('Dołączanie do gry...');
+            };
+
+            function submitDuelResultIfNeeded() {
+                if (!duelModeActive || !duelLobbyId || duelResultSent) return;
+                duelResultSent = true;
+                sendSocket({
+                    type: 'SUBMIT_1V1_RESULT',
+                    lobbyId: duelLobbyId,
+                    score: Number(score || 0),
+                    finished: true
+                });
+            }
+
+            function clearDuelLocalState() {
+                duelModeActive = false;
+                duelRole = null;
+                duelCurrentTrack = '';
+                duelCurrentTitle = '';
+                duelCurrentDuration = 0;
+                duelCurrentOpponent = '';
+                duelResultSent = false;
+                if (duelStartTimer) {
+                    clearTimeout(duelStartTimer);
+                    duelStartTimer = null;
+                }
+                duelCreateBtn.disabled = false;
+                duelCancelBtn.style.display = 'none';
+                duelUrlInput.disabled = false;
+            }
+
+            function startDuelGameSession(config) {
+                if (!config || !config.trackUrl) {
+                    setDuelStatus('Brak danych do uruchomienia 1VS1.', true);
+                    return;
+                }
+
+                clearDuelLocalState();
+                duelModeActive = true;
+                duelLobbyId = config.lobbyId || duelLobbyId;
+                duelRole = config.role || duelRole;
+                duelCurrentTrack = config.trackUrl;
+                duelCurrentTitle = config.title || titleFromUrl(config.trackUrl);
+                duelCurrentDuration = Number(config.duration) || 0;
+                duelCurrentOpponent = config.opponent || '';
+                duelResultSent = false;
+
+                try {
+                    selectedDifficulty = 'normal';
+                    isEndlessMode = false;
+                    endlessSpeedMultiplier = 1.0;
+                    activeThemeKey = document.getElementById('theme-color')?.value || 'rainbow';
+
+                    if (menuAudio) {
+                        menuAudio.pause();
+                        menuAudio.src = "";
+                        menuAudio.load();
+                    }
+
+                    if (defeatAudio) { defeatAudio.pause(); defeatAudio.currentTime = 0; }
+                    if (victoryAudio) { victoryAudio.pause(); victoryAudio.currentTime = 0; }
+
+                    menu.style.opacity = 0;
+                    menu.style.transform = "scale(0.95)";
+                    setTimeout(() => { menu.style.display = 'none'; }, 500);
+                    gameContainer.style.display = 'block';
+
+                    if (typeof setupBackground === 'function') setupBackground();
+
+                    score = 0;
+                    combo = 0;
+                    hp = 100;
+                    isGameOver = false;
+                    isVictory = false;
+                    circles = [];
+                    currentBgIndex = 0;
+                    backgroundFlashIntensity = 0;
+                    gameContainer.style.backgroundColor = '#000000';
+                    isChorus = false;
+                    chorusBadge.style.display = 'none';
+                    gameContainer.classList.remove('chorus-active');
+
+                    if (endlessBadge) endlessBadge.style.display = 'none';
+                    if (typeof updateHUD === 'function') updateHUD();
+                    if (typeof updateHPBar === 'function') updateHPBar();
+
+                    startTime = performance.now();
+                    lastBeatTime = startTime;
+                    isUrlMode = true;
+
+                    if (audioSource) {
+                        try { audioSource.stop(); } catch {}
+                    }
+
+                    audioPlayer = new Audio(config.trackUrl);
+                    audioPlayer.volume = parseFloat(document.getElementById('volume-music').value) / 100;
+                    audioPlayer.playbackRate = 1;
+
+                    audioPlayer.onended = () => {
+                        if (typeof triggerVictory === 'function') triggerVictory();
+                    };
+
+                    audioPlayer.play().catch(err => console.log(err));
+                    gameActive = true;
+                    setDuelStatus(`Rozpoczęto 1VS1: ${duelCurrentTitle} (${formatDuration(duelCurrentDuration)})`);
+                } catch (err) {
+                    setDuelStatus('Nie udało się uruchomić gry 1VS1.', true);
+                }
+            }
+
+            const originalTriggerVictory = window.triggerVictory;
+            window.triggerVictory = function () {
+                if (!duelModeActive) {
+                    return originalTriggerVictory.apply(this, arguments);
+                }
+
+                if (audioPlayer) {
+                    audioPlayer.pause();
+                }
+
+                submitDuelResultIfNeeded();
+
+                gameActive = false;
+                isVictory = true;
+
+                if (victoryAudio) {
+                    victoryAudio.currentTime = 0;
+                    victoryAudio.play().catch(() => {});
+                }
+
+                if (vicScoreVal) vicScoreVal.innerText = String(score || 0);
+                if (earnedPointsVal) earnedPointsVal.innerText = '0';
+
+                victoryScreen.style.display = 'flex';
+                duelModeActive = false;
+            };
+
+            const originalTriggerGameOver = window.triggerGameOver;
+            window.triggerGameOver = function () {
+                if (!duelModeActive) {
+                    return originalTriggerGameOver.apply(this, arguments);
+                }
+
+                if (audioPlayer) {
+                    audioPlayer.pause();
+                }
+
+                submitDuelResultIfNeeded();
+
+                gameActive = false;
+                isGameOver = true;
+
+                if (defeatAudio) {
+                    defeatAudio.currentTime = 0;
+                    defeatAudio.play().catch(() => {});
+                }
+
+                if (endScoreVal) endScoreVal.innerText = String(score || 0);
+                gameOverScreen.style.display = 'flex';
+                duelModeActive = false;
+            };
+
+            const originalGoToMenu = window.goToMenu;
+            window.goToMenu = function () {
+                if (duelLobbyId && !duelResultSent) {
+                    sendLobbyLeave();
+                }
+                clearDuelLocalState();
+                return originalGoToMenu.apply(this, arguments);
+            };
+
+            const originalSwitchTab = window.switchTab;
+            window.switchTab = function (target) {
+                const buttons = document.querySelectorAll('.tab-btn');
+                const sections = document.querySelectorAll('.menu-section');
+                buttons.forEach(b => b.classList.remove('active-tab'));
+                sections.forEach(s => s.classList.remove('active-section'));
+
+                if (target === 'play') {
+                    buttons[0]?.classList.add('active-tab');
+                    document.getElementById('section-play')?.classList.add('active-section');
+                    setDuelStatus('');
+                    return;
+                }
+                if (target === 'settings') {
+                    buttons[1]?.classList.add('active-tab');
+                    document.getElementById('section-settings')?.classList.add('active-section');
+                    setDuelPanel('create');
+                    return;
+                }
+                if (target === '1vs1') {
+                    buttons[2]?.classList.add('active-tab');
+                    document.getElementById('section-1v1')?.classList.add('active-section');
+                    setDuelPanel('create');
+                    hookSocket();
+                    if (socket && socket.readyState === WebSocket.OPEN) {
+                        sendSocket({ type: 'REQUEST_1V1_LOBBIES' });
+                    }
+                    return;
+                }
+
+                return originalSwitchTab.apply(this, arguments);
+            };
+
+            const oldConnect = window.connectToServer;
+            window.connectToServer = function () {
+                const result = oldConnect.apply(this, arguments);
+                setTimeout(hookSocket, 0);
+                return result;
+            };
+
+            if (socket) {
+                hookSocket();
+            }
+
+            if (myUsername) {
+                updateEloDisplay();
+            }
+
+            window.addEventListener('beforeunload', () => {
+                if (duelLobbyId) {
+                    sendLobbyLeave();
+                }
+            });
+
+            // Ensure join tab reflects live data when opening it
+            setDuelPanel('create');
+            renderDuelLobbyList([]);
+        })();
+    </script>
+
 </body>
 </html>

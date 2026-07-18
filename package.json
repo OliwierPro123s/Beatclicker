@@ -1,7 +1,7 @@
 {
   "name": "beatclicker",
   "version": "1.0.0",
-  "description": "BeatClicker websocket server",
+  "description": "BeatClicker with login, leaderboard and 1v1 lobby",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {

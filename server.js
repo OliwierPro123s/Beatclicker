@@ -4,18 +4,18 @@ const path = require('path');
 const { WebSocketServer, WebSocket } = require('ws');
 
 const port = process.env.PORT || 8080;
-const indexPath = path.join(__dirname, 'index.html');
+const publicIndex = path.join(__dirname, 'index.html');
 
 const server = http.createServer((req, res) => {
     try {
         if (req.url === '/' || req.url === '/index.html') {
-            if (!fs.existsSync(indexPath)) {
+            if (!fs.existsSync(publicIndex)) {
                 res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
                 res.end('Brak pliku index.html obok server.js');
                 return;
             }
 
-            const html = fs.readFileSync(indexPath, 'utf8');
+            const html = fs.readFileSync(publicIndex, 'utf8');
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
             res.end(html);
             return;
@@ -36,10 +36,8 @@ const server = http.createServer((req, res) => {
     }
 });
 
-// WebSocket na osobnej ścieżce
 const wss = new WebSocketServer({ noServer: true });
 
-// Prosta baza w pamięci
 let users = {};
 let onlineCount = 0;
 
@@ -183,7 +181,6 @@ server.on('upgrade', (req, socket, head) => {
     try {
         const url = new URL(req.url, `http://${req.headers.host}`);
 
-        // Akceptujemy WS tylko na /ws i /, żeby było kompatybilnie
         if (url.pathname !== '/ws' && url.pathname !== '/') {
             socket.destroy();
             return;
@@ -197,7 +194,6 @@ server.on('upgrade', (req, socket, head) => {
     }
 });
 
-// Heartbeat
 const interval = setInterval(() => {
     wss.clients.forEach((ws) => {
         if (ws.isAlive === false) {
