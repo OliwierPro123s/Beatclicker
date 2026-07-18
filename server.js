@@ -1,4 +1,3 @@
-
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -45,7 +44,9 @@ let users = Object.create(null);
 let onlineCount = 0;
 let duelLobbies = new Map();
 
-console.log(`Serwer BeatClicker działa na porcie ${port}`);
+function normalizeText(value) {
+    return typeof value === 'string' ? value.trim() : '';
+}
 
 function loadUsers() {
     try {
@@ -89,12 +90,6 @@ function saveUsers() {
     }
 }
 
-loadUsers();
-
-function normalizeText(value) {
-    return typeof value === 'string' ? value.trim() : '';
-}
-
 function safeSend(ws, payload) {
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(payload));
@@ -128,35 +123,6 @@ function broadcastLeaderboard() {
     broadcast({ type: 'LEADERBOARD', data: getTopPlayers() });
 }
 
-function getWaitingLobbies() {
-    return Array.from(duelLobbies.values())
-        .filter(lobby => lobby.status === 'waiting')
-        .sort((a, b) => b.createdAt - a.createdAt)
-        .map(lobby => ({
-            id: lobby.id,
-            host: lobby.host,
-            title: lobby.title,
-            duration: lobby.duration,
-            createdAt: lobby.createdAt
-        }));
-}
-
-function broadcastDuelLobbies() {
-    broadcast({ type: '1V1_LOBBIES', data: getWaitingLobbies() });
-}
-
-function sendDuelLobbiesTo(ws) {
-    safeSend(ws, { type: '1V1_LOBBIES', data: getWaitingLobbies() });
-}
-
-function createLobbyId() {
-    try {
-        return `lobby_${randomUUID()}`;
-    } catch {
-        return `lobby_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    }
-}
-
 function getUserElo(username) {
     if (!users[username]) return 1000;
     const elo = Number(users[username].elo);
@@ -173,8 +139,15 @@ function setUserElo(username, elo) {
 function computeDuelDelta(playerElo, opponentElo) {
     const gap = Math.abs((Number(playerElo) || 1000) - (Number(opponentElo) || 1000));
     if (gap === 0) return 0;
-    // Im większa różnica ELO, tym mniejsza zmiana.
     return Math.max(1, 5 - Math.min(4, Math.floor(gap / 200)));
+}
+
+function createLobbyId() {
+    try {
+        return `lobby_${randomUUID()}`;
+    } catch {
+        return `lobby_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    }
 }
 
 function getLobbyForUsername(username) {
@@ -183,50 +156,108 @@ function getLobbyForUsername(username) {
     ) || null;
 }
 
-function cancelLobby(lobby, reason = 'anulowano') {
+function getWaitingLobbies() {
+    return Array.from(duelLobbies.values())
+        .filter(lobby => lobby.status === 'waiting')
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .map(lobby => ({
+            id: lobby.id,
+            host: lobby.host,
+            title: lobby.title,
+            duration: lobby.duration,
+            createdAt: lobby.createdAt,
+            difficulty: lobby.difficulty
+        }));
+}
+
+function broadcastDuelLobbies() {
+    broadcast({ type: '1V1_LOBBIES', data: getWaitingLobbies() });
+}
+
+function sendDuelLobbiesTo(ws) {
+    safeSend(ws, { type: '1V1_LOBBIES', data: getWaitingLobbies() });
+}
+
+function registerInLobby(ws, lobby, role) {
+    ws.currentLobbyId = lobby.id;
+    ws.currentLobbyRole = role;
+    if (role === 'host') lobby.hostWs = ws;
+    if (role === 'guest') lobby.guestWs = ws;
+}
+
+function cleanupLobbyRefs(lobby) {
     if (!lobby) return;
-
-    const payload = {
-        type: '1V1_CANCELLED',
-        lobbyId: lobby.id,
-        reason
-    };
-
-    safeSend(lobby.hostWs, payload);
-    safeSend(lobby.guestWs, payload);
-
-    duelLobbies.delete(lobby.id);
     if (lobby.hostWs && lobby.hostWs.currentLobbyId === lobby.id) lobby.hostWs.currentLobbyId = null;
     if (lobby.guestWs && lobby.guestWs.currentLobbyId === lobby.id) lobby.guestWs.currentLobbyId = null;
+    if (lobby.hostWs && lobby.hostWs.currentLobbyRole === 'host') lobby.hostWs.currentLobbyRole = null;
+    if (lobby.guestWs && lobby.guestWs.currentLobbyRole === 'guest') lobby.guestWs.currentLobbyRole = null;
+}
 
+function cancelLobby(lobby, reason = 'anulowano') {
+    if (!lobby || lobby.resolved) return;
+
+    safeSend(lobby.hostWs, { type: '1V1_CANCELLED', lobbyId: lobby.id, reason });
+    safeSend(lobby.guestWs, { type: '1V1_CANCELLED', lobbyId: lobby.id, reason });
+
+    duelLobbies.delete(lobby.id);
+    cleanupLobbyRefs(lobby);
     broadcastDuelLobbies();
 }
 
-function finalizeMatch(lobby) {
+function finalizeMatch(lobby, details = {}) {
     if (!lobby || lobby.resolved) return;
     lobby.resolved = true;
 
-    const hostScore = Number(lobby.results.get(lobby.host) ?? 0);
-    const guestScore = Number(lobby.results.get(lobby.guest) ?? 0);
-
-    const hostElo = getUserElo(lobby.host);
-    const guestElo = getUserElo(lobby.guest);
+    const hostRes = lobby.results.get(lobby.host) || null;
+    const guestRes = lobby.results.get(lobby.guest) || null;
 
     let hostOutcome = 'draw';
     let guestOutcome = 'draw';
     let hostDelta = 0;
     let guestDelta = 0;
 
-    if (hostScore > guestScore) {
+    const hostElo = getUserElo(lobby.host);
+    const guestElo = getUserElo(lobby.guest);
+
+    const winnerByDeath = details.winnerByDeath || null;
+
+    if (winnerByDeath === lobby.host) {
         hostOutcome = 'win';
         guestOutcome = 'loss';
         hostDelta = computeDuelDelta(hostElo, guestElo);
         guestDelta = -computeDuelDelta(guestElo, hostElo);
-    } else if (guestScore > hostScore) {
+    } else if (winnerByDeath === lobby.guest) {
         hostOutcome = 'loss';
         guestOutcome = 'win';
         hostDelta = -computeDuelDelta(hostElo, guestElo);
         guestDelta = computeDuelDelta(guestElo, hostElo);
+    } else {
+        const hostScore = Number(hostRes && hostRes.score) || 0;
+        const guestScore = Number(guestRes && guestRes.score) || 0;
+        const hostSurvival = Number(hostRes && hostRes.survivalMs) || 0;
+        const guestSurvival = Number(guestRes && guestRes.survivalMs) || 0;
+
+        if (hostScore > guestScore) {
+            hostOutcome = 'win';
+            guestOutcome = 'loss';
+            hostDelta = computeDuelDelta(hostElo, guestElo);
+            guestDelta = -computeDuelDelta(guestElo, hostElo);
+        } else if (guestScore > hostScore) {
+            hostOutcome = 'loss';
+            guestOutcome = 'win';
+            hostDelta = -computeDuelDelta(hostElo, guestElo);
+            guestDelta = computeDuelDelta(guestElo, hostElo);
+        } else if (hostSurvival > guestSurvival) {
+            hostOutcome = 'win';
+            guestOutcome = 'loss';
+            hostDelta = computeDuelDelta(hostElo, guestElo);
+            guestDelta = -computeDuelDelta(guestElo, hostElo);
+        } else if (guestSurvival > hostSurvival) {
+            hostOutcome = 'loss';
+            guestOutcome = 'win';
+            hostDelta = -computeDuelDelta(hostElo, guestElo);
+            guestDelta = computeDuelDelta(guestElo, hostElo);
+        }
     }
 
     const newHostElo = Math.max(0, hostElo + hostDelta);
@@ -242,9 +273,11 @@ function finalizeMatch(lobby) {
         outcome: hostOutcome,
         delta: hostDelta,
         newElo: newHostElo,
-        score: hostScore,
-        opponentScore: guestScore,
-        opponent: lobby.guest
+        score: Number(hostRes && hostRes.score) || 0,
+        opponentScore: Number(guestRes && guestRes.score) || 0,
+        survivalMs: Number(hostRes && hostRes.survivalMs) || 0,
+        opponent: lobby.guest,
+        reason: details.reason || (winnerByDeath ? 'death' : 'score')
     });
 
     safeSend(lobby.guestWs, {
@@ -253,17 +286,53 @@ function finalizeMatch(lobby) {
         outcome: guestOutcome,
         delta: guestDelta,
         newElo: newGuestElo,
-        score: guestScore,
-        opponentScore: hostScore,
-        opponent: lobby.host
+        score: Number(guestRes && guestRes.score) || 0,
+        opponentScore: Number(hostRes && hostRes.score) || 0,
+        survivalMs: Number(guestRes && guestRes.survivalMs) || 0,
+        opponent: lobby.host,
+        reason: details.reason || (winnerByDeath ? 'death' : 'score')
     });
 
     duelLobbies.delete(lobby.id);
-    if (lobby.hostWs && lobby.hostWs.currentLobbyId === lobby.id) lobby.hostWs.currentLobbyId = null;
-    if (lobby.guestWs && lobby.guestWs.currentLobbyId === lobby.id) lobby.guestWs.currentLobbyId = null;
-
+    cleanupLobbyRefs(lobby);
     broadcastDuelLobbies();
     broadcastLeaderboard();
+}
+
+function maybeResolveLobby(lobby) {
+    if (!lobby || lobby.resolved || lobby.status !== 'matched') return;
+
+    const hostRes = lobby.results.get(lobby.host) || null;
+    const guestRes = lobby.results.get(lobby.guest) || null;
+
+    if (hostRes && hostRes.status === 'dead' && guestRes && guestRes.status === 'dead') {
+        const hostSurvival = Number(hostRes.survivalMs) || 0;
+        const guestSurvival = Number(guestRes.survivalMs) || 0;
+
+        if (hostSurvival === guestSurvival) {
+            finalizeMatch(lobby, { reason: 'death-draw' });
+        } else {
+            finalizeMatch(lobby, {
+                reason: 'death',
+                winnerByDeath: hostSurvival > guestSurvival ? lobby.host : lobby.guest
+            });
+        }
+        return;
+    }
+
+    if (hostRes && hostRes.status === 'dead') {
+        finalizeMatch(lobby, { reason: 'death', winnerByDeath: lobby.guest });
+        return;
+    }
+
+    if (guestRes && guestRes.status === 'dead') {
+        finalizeMatch(lobby, { reason: 'death', winnerByDeath: lobby.host });
+        return;
+    }
+
+    if (hostRes && guestRes && hostRes.status === 'survived' && guestRes.status === 'survived') {
+        finalizeMatch(lobby, { reason: 'score' });
+    }
 }
 
 function startMatch(lobby) {
@@ -301,15 +370,9 @@ function startMatch(lobby) {
     broadcastDuelLobbies();
 }
 
-function registerInLobby(ws, lobby, role) {
-    ws.currentLobbyId = lobby.id;
-    ws.currentLobbyRole = role;
-    if (role === 'host') {
-        lobby.hostWs = ws;
-    } else {
-        lobby.guestWs = ws;
-    }
-}
+loadUsers();
+
+console.log(`Serwer BeatClicker działa na porcie ${port}`);
 
 wss.on('connection', (ws, req) => {
     onlineCount += 1;
@@ -355,7 +418,6 @@ wss.on('connection', (ws, req) => {
 
                 if (!users[username]) {
                     users[username] = { password, points: 0, elo: 1000 };
-                    saveUsers();
                 }
 
                 if (users[username].password === password) {
@@ -497,11 +559,7 @@ wss.on('connection', (ws, req) => {
                 const lobby = duelLobbies.get(lobbyId);
                 if (!lobby) return;
 
-                if (lobby.status === 'matched') {
-                    cancelLobby(lobby, 'anulowano');
-                } else {
-                    cancelLobby(lobby, 'anulowano');
-                }
+                cancelLobby(lobby, 'anulowano');
                 return;
             }
 
@@ -512,16 +570,19 @@ wss.on('connection', (ws, req) => {
                 if (!ws.username || (ws.username !== lobby.host && ws.username !== lobby.guest)) return;
 
                 const score = Number(data.score);
+                const survivalMs = Number(data.survivalMs);
+                const status = normalizeText(data.status) === 'dead' ? 'dead' : 'survived';
+
                 if (!Number.isFinite(score) || score < 0) return;
 
-                lobby.results.set(ws.username, score);
+                lobby.results.set(ws.username, {
+                    score,
+                    survivalMs: Number.isFinite(survivalMs) && survivalMs >= 0 ? survivalMs : 0,
+                    status,
+                    submittedAt: Date.now()
+                });
 
-                const hostHas = lobby.results.has(lobby.host);
-                const guestHas = lobby.results.has(lobby.guest);
-
-                if (hostHas && guestHas) {
-                    finalizeMatch(lobby);
-                }
+                maybeResolveLobby(lobby);
                 return;
             }
         } catch (e) {
@@ -537,7 +598,6 @@ wss.on('connection', (ws, req) => {
         onlineCount = Math.max(0, onlineCount - 1);
         broadcastOnlineCount();
 
-        // Jeśli gracz był w lobby 1v1, zamykamy lub anulujemy jego grę.
         if (ws.currentLobbyId) {
             const lobby = duelLobbies.get(ws.currentLobbyId);
             if (lobby) {
