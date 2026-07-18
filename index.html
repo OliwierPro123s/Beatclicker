@@ -784,6 +784,8 @@
         const SERVER_URL = "wss://beatclick-ku9l.onrender.com"; 
 
         let socket = null;
+        let reconnectTimer = null;
+        let pendingAuth = null;
         let myUsername = "";
         let playerPoints = 0;
 
@@ -795,11 +797,45 @@
         const onlineCounter = document.getElementById('online-counter');
         const leaderboardList = document.getElementById('leaderboard-dom-list');
 
+        function sendLogin(username, password, remember) {
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                pendingAuth = { username, password, remember };
+                connectToServer();
+                return false;
+            }
+
+            socket.send(JSON.stringify({ type: 'LOGIN', username, password }));
+            return true;
+        }
+
         function connectToServer() {
+            if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+                return;
+            }
+
+            if (reconnectTimer) {
+                clearTimeout(reconnectTimer);
+                reconnectTimer = null;
+            }
+
+            authError.innerText = "Łączenie z serwerem...";
             socket = new WebSocket(SERVER_URL);
 
             socket.onopen = () => {
                 console.log("Połączono z serwerem Render.");
+                authError.innerText = "";
+
+                if (pendingAuth) {
+                    const { username, password, remember } = pendingAuth;
+                    pendingAuth = null;
+                    if (remember) {
+                        localStorage.setItem('bc_remember_user', username);
+                        localStorage.setItem('bc_remember_pass', password);
+                    }
+                    sendLogin(username, password, remember);
+                    return;
+                }
+
                 const savedUser = localStorage.getItem('bc_remember_user');
                 const savedPass = localStorage.getItem('bc_remember_pass');
                 if (savedUser && savedPass) {
@@ -809,11 +845,11 @@
 
             socket.onmessage = (event) => {
                 const msg = JSON.parse(event.data);
-                
+
                 if (msg.type === 'ONLINE_COUNT') {
                     onlineCounter.innerText = `Liczba Klikaczy: ${msg.count}`;
                 }
-                
+
                 if (msg.type === 'LEADERBOARD') {
                     renderLeaderboard(msg.data);
                 }
@@ -822,7 +858,7 @@
                     myUsername = msg.username;
                     playerPoints = msg.points;
                     globalPointsVal.innerText = playerPoints;
-                    
+
                     if (authRememberIn.checked) {
                         localStorage.setItem('bc_remember_user', authUserIn.value);
                         localStorage.setItem('bc_remember_pass', authPasswordIn.value);
@@ -830,10 +866,10 @@
                         localStorage.removeItem('bc_remember_user');
                         localStorage.removeItem('bc_remember_pass');
                     }
-                    
+
                     authOverlay.style.opacity = 0;
                     setTimeout(() => authOverlay.style.display = 'none', 500);
-                    
+
                     if (menuAudio.paused && menuAudio.src !== "") {
                         menuAudio.play().catch(e => console.log(e));
                     }
@@ -844,9 +880,13 @@
                 }
             };
 
+            socket.onerror = () => {
+                authError.innerText = "Nie udało się połączyć z serwerem. Ponawianie próby...";
+            };
+
             socket.onclose = () => {
                 console.log("Rozłączono. Ponawianie próby połączenia za 2.5 sekundy...");
-                setTimeout(connectToServer, 2500);
+                reconnectTimer = setTimeout(connectToServer, 2500);
             };
         }
 
@@ -861,11 +901,16 @@
                 authError.innerText = "Nick (min. 3 znaki), Hasło (min. 4 znaki)!";
                 return;
             }
-            if (socket && socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({ type: 'LOGIN', username: user, password: pass }));
-            } else {
-                authError.innerText = "Brak aktywnego połączenia z serwerem!";
+
+            authError.innerText = "";
+            pendingAuth = { username: user, password: pass, remember: authRememberIn.checked };
+
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                connectToServer();
+                return;
             }
+
+            socket.send(JSON.stringify({ type: 'LOGIN', username: user, password: pass }));
         }
 
         function renderLeaderboard(data) {
