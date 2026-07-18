@@ -1106,6 +1106,37 @@
         }
         updateGlobalAudioVolumes();
 
+        function handleSuccessfulLogin(msg) {
+            myUsername = msg.username;
+            playerPoints = Number(msg.points) || 0;
+            globalPointsVal.innerText = playerPoints;
+            localStorage.setItem('beatclicker_points', playerPoints);
+
+            if (typeof msg.elo === 'number') {
+                playerElo = Number(msg.elo) || playerElo;
+                localStorage.setItem('beatclicker_elo', String(playerElo));
+                updateEloDisplay();
+            }
+
+            if (authRememberIn.checked) {
+                localStorage.setItem('bc_remember_user', authUserIn.value.trim());
+                localStorage.setItem('bc_remember_pass', authPasswordIn.value.trim());
+            } else {
+                localStorage.removeItem('bc_remember_user');
+                localStorage.removeItem('bc_remember_pass');
+            }
+
+            authError.innerText = '';
+            authOverlay.style.opacity = 0;
+            setTimeout(() => {
+                authOverlay.style.display = 'none';
+            }, 500);
+
+            if (menuAudio.paused && menuAudio.src !== '') {
+                menuAudio.play().catch(e => console.log(e));
+            }
+        }
+
         function renderLeaderboard(data) {
             leaderboardList.innerHTML = "";
             if (!Array.isArray(data) || data.length === 0) {
@@ -1132,6 +1163,52 @@
                 username: pendingLogin.username,
                 password: pendingLogin.password
             }));
+        }
+
+        function getLoginApiUrls() {
+            const urls = [];
+            if (location.origin && location.origin.startsWith('http')) {
+                urls.push(`${location.origin}/api/login`);
+            }
+            urls.push('http://localhost:8080/api/login');
+            urls.push('http://127.0.0.1:8080/api/login');
+            return [...new Set(urls)];
+        }
+
+        async function loginViaHttp(username, password) {
+            const payload = { username, password };
+            const urls = getLoginApiUrls();
+
+            for (const url of urls) {
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        mode: 'cors',
+                        cache: 'no-store',
+                        body: JSON.stringify(payload)
+                    });
+
+                    const data = await response.json().catch(() => ({}));
+                    if (response.ok && data.ok) {
+                        return data;
+                    }
+
+                    if (response.status === 401) {
+                        throw new Error(data.message || 'Nieprawidłowe hasło!');
+                    }
+
+                    if (response.status === 400) {
+                        throw new Error(data.message || 'Nieprawidłowe dane logowania.');
+                    }
+                } catch (err) {
+                    if (url === urls[urls.length - 1]) {
+                        throw err;
+                    }
+                }
+            }
+
+            throw new Error('Nie udało się połączyć z API logowania.');
         }
 
         function getNextSocketUrl() {
@@ -1193,33 +1270,8 @@
                 }
 
                 if (msg.type === 'LOGIN_SUCCESS') {
-                    myUsername = msg.username;
-                    playerPoints = Number(msg.points) || 0;
-                    globalPointsVal.innerText = playerPoints;
-                    localStorage.setItem('beatclicker_points', playerPoints);
-
-                    if (typeof msg.elo === 'number') {
-                        playerElo = Number(msg.elo) || playerElo;
-                        localStorage.setItem('beatclicker_elo', String(playerElo));
-                        updateEloDisplay();
-                    }
-
-                    if (authRememberIn.checked) {
-                        localStorage.setItem('bc_remember_user', authUserIn.value.trim());
-                        localStorage.setItem('bc_remember_pass', authPasswordIn.value.trim());
-                    } else {
-                        localStorage.removeItem('bc_remember_user');
-                        localStorage.removeItem('bc_remember_pass');
-                    }
-
+                    handleSuccessfulLogin(msg);
                     pendingLogin = null;
-                    authError.innerText = "";
-                    authOverlay.style.opacity = 0;
-                    setTimeout(() => authOverlay.style.display = 'none', 500);
-
-                    if (menuAudio.paused && menuAudio.src !== "") {
-                        menuAudio.play().catch(e => console.log(e));
-                    }
                 }
 
                 if (msg.type === 'LOGIN_ERROR') {
@@ -1250,7 +1302,7 @@
             };
         }
 
-        function submitAuth() {
+        async function submitAuth() {
             const user = authUserIn.value.trim();
             const pass = authPasswordIn.value.trim();
 
@@ -1262,7 +1314,14 @@
             pendingLogin = { username: user, password: pass };
             authError.innerText = "Łączenie z serwerem...";
 
-            connectToServer();
+            try {
+                const data = await loginViaHttp(user, pass);
+                handleSuccessfulLogin(data);
+            } catch (httpErr) {
+                console.log('HTTP login fallback failed:', httpErr);
+            }
+
+            connectToServer(true);
             if (socket && socket.readyState === WebSocket.OPEN) {
                 sendLoginPayload();
             }

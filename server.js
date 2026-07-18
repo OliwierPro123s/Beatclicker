@@ -8,32 +8,102 @@ const port = process.env.PORT || 8080;
 const publicIndex = path.join(__dirname, 'index.html');
 const usersDbPath = path.join(__dirname, 'users_db.json');
 
+const COMMON_HEADERS = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Cache-Control': 'no-store'
+};
+
+function sendJson(res, statusCode, payload) {
+    res.writeHead(statusCode, {
+        ...COMMON_HEADERS,
+        'Content-Type': 'application/json; charset=utf-8'
+    });
+    res.end(JSON.stringify(payload));
+}
+
 const server = http.createServer((req, res) => {
     try {
+        if (req.method === 'OPTIONS') {
+            res.writeHead(204, COMMON_HEADERS);
+            res.end();
+            return;
+        }
+
         if (req.url === '/' || req.url === '/index.html') {
             if (!fs.existsSync(publicIndex)) {
-                res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+                res.writeHead(500, { ...COMMON_HEADERS, 'Content-Type': 'text/plain; charset=utf-8' });
                 res.end('Brak pliku index.html obok server.js');
                 return;
             }
 
             const html = fs.readFileSync(publicIndex, 'utf8');
-            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+            res.writeHead(200, { ...COMMON_HEADERS, 'Content-Type': 'text/html; charset=utf-8' });
             res.end(html);
             return;
         }
 
         if (req.url === '/health') {
-            res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+            res.writeHead(200, { ...COMMON_HEADERS, 'Content-Type': 'text/plain; charset=utf-8' });
             res.end('ok');
             return;
         }
 
-        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        if (req.url === '/api/login' && req.method === 'POST') {
+            let body = '';
+            req.on('data', chunk => {
+                body += chunk;
+                if (body.length > 1_000_000) req.destroy();
+            });
+
+            req.on('end', () => {
+                try {
+                    const data = JSON.parse(body || '{}');
+                    const username = normalizeText(data.username);
+                    const password = normalizeText(data.password);
+
+                    if (username.length < 3 || password.length < 4) {
+                        sendJson(res, 400, {
+                            ok: false,
+                            message: 'Nick musi mieć min. 3 znaki, a hasło min. 4 znaki.'
+                        });
+                        return;
+                    }
+
+                    if (!users[username]) {
+                        users[username] = { password, points: 0, elo: 1000 };
+                    }
+
+                    if (users[username].password !== password) {
+                        sendJson(res, 401, { ok: false, message: 'Nieprawidłowe hasło!' });
+                        return;
+                    }
+
+                    if (!Number.isFinite(Number(users[username].elo))) {
+                        users[username].elo = 1000;
+                    }
+
+                    saveUsers();
+                    sendJson(res, 200, {
+                        ok: true,
+                        username,
+                        points: Number(users[username].points) || 0,
+                        elo: Number(users[username].elo) || 1000
+                    });
+                    broadcastLeaderboard();
+                } catch (err) {
+                    sendJson(res, 400, { ok: false, message: 'Nieprawidłowe dane logowania.' });
+                }
+            });
+            return;
+        }
+
+        res.writeHead(404, { ...COMMON_HEADERS, 'Content-Type': 'text/plain; charset=utf-8' });
         res.end('Not found');
     } catch (err) {
         console.error('Błąd HTTP:', err);
-        res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.writeHead(500, { ...COMMON_HEADERS, 'Content-Type': 'text/plain; charset=utf-8' });
         res.end('Błąd serwera');
     }
 });
