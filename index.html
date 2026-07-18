@@ -824,7 +824,7 @@
                 <input type="checkbox" id="auth-remember" style="cursor:pointer;">
                 <label for="auth-remember" style="cursor:pointer;">Zapamiętaj mnie</label>
             </div>
-            <button class="auth-btn" onclick="submitAuth()">ZALOGUJ / ZAREJESTRUJ</button>
+            <button type="button" class="auth-btn" onclick="submitAuth()">ZALOGUJ / ZAREJESTRUJ</button>
             <div id="auth-error"></div>
         </div>
     </div>
@@ -1363,42 +1363,6 @@
                 if (socket && socket.readyState === WebSocket.OPEN) {
                     socket.send(JSON.stringify({ type: 'REQUEST_1V1_LOBBIES' }));
                 }
-            }
-        }
-
-            playSwipeSound();
-
-            if (target === 'play') {
-                buttons[0]?.classList.add('active-tab');
-                document.getElementById('section-play')?.classList.add('active-section');
-                menu.classList.remove('duel-mode');
-            } else if (target === 'settings') {
-                buttons[1]?.classList.add('active-tab');
-                document.getElementById('section-settings')?.classList.add('active-section');
-                menu.classList.remove('duel-mode');
-            } else if (target === '1vs1') {
-                buttons[2]?.classList.add('active-tab');
-                document.getElementById('section-1v1')?.classList.add('active-section');
-                menu.classList.add('duel-mode');
-                if (typeof setDuelPanel === 'function') {
-                    setDuelPanel('create');
-                }
-                if (socket && socket.readyState === WebSocket.OPEN) {
-                    socket.send(JSON.stringify({ type: 'REQUEST_1V1_LOBBIES' }));
-                }
-            }
-        }
-
-            playSwipeSound();
-            buttons.forEach(tab => tab.classList.remove('active-tab'));
-            document.querySelectorAll('.menu-section').forEach(sec => sec.classList.remove('active-section'));
-
-            if (target === 'play') {
-                buttons[0].classList.add('active-tab');
-                document.getElementById('section-play').classList.add('active-section');
-            } else {
-                buttons[1].classList.add('active-tab');
-                document.getElementById('section-settings').classList.add('active-section');
             }
         }
 
