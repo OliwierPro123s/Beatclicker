@@ -1058,15 +1058,7 @@
 
         const MENU_AUDIO_SRC = "https://vgmtreasurechest.com/soundtracks/demonic-mahjong-android-ios-macos-mobile-steam-windows-gamerip-2025/zusdrcmwnu/Boss%20Match.mp3";
 
-        const WS_PORT_FALLBACK = 8080;
-        const WS_URL_CANDIDATES = (() => {
-            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const candidates = [];
-            if (location.host) candidates.push(`${protocol}//${location.host}/ws`);
-            candidates.push(`${protocol}//localhost:${WS_PORT_FALLBACK}/ws`);
-            candidates.push(`${protocol}//127.0.0.1:${WS_PORT_FALLBACK}/ws`);
-            return [...new Set(candidates)];
-        })();
+        const SERVER_URL = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`;
 
         const authOverlay = document.getElementById('auth-overlay');
         const authUserIn = document.getElementById('auth-username');
@@ -1080,9 +1072,6 @@
         let myUsername = "";
         let pendingLogin = null;
         let authConnectedOnce = false;
-        let socketUrlIndex = 0;
-        let reconnectTimer = null;
-        let reconnectAttempts = 0;
 
         const menuAudio = document.getElementById('menu-audio');
         const defeatAudio = document.getElementById('defeat-audio');
@@ -1105,37 +1094,6 @@
             swipeAudio.volume = currentSfxVol; // Sterowanie nowym dźwiękiem z menu
         }
         updateGlobalAudioVolumes();
-
-        function handleSuccessfulLogin(msg) {
-            myUsername = msg.username;
-            playerPoints = Number(msg.points) || 0;
-            globalPointsVal.innerText = playerPoints;
-            localStorage.setItem('beatclicker_points', playerPoints);
-
-            if (typeof msg.elo === 'number') {
-                playerElo = Number(msg.elo) || playerElo;
-                localStorage.setItem('beatclicker_elo', String(playerElo));
-                updateEloDisplay();
-            }
-
-            if (authRememberIn.checked) {
-                localStorage.setItem('bc_remember_user', authUserIn.value.trim());
-                localStorage.setItem('bc_remember_pass', authPasswordIn.value.trim());
-            } else {
-                localStorage.removeItem('bc_remember_user');
-                localStorage.removeItem('bc_remember_pass');
-            }
-
-            authError.innerText = '';
-            authOverlay.style.opacity = 0;
-            setTimeout(() => {
-                authOverlay.style.display = 'none';
-            }, 500);
-
-            if (menuAudio.paused && menuAudio.src !== '') {
-                menuAudio.play().catch(e => console.log(e));
-            }
-        }
 
         function renderLeaderboard(data) {
             leaderboardList.innerHTML = "";
@@ -1165,82 +1123,15 @@
             }));
         }
 
-        function getLoginApiUrls() {
-            const urls = [];
-            if (location.origin && location.origin.startsWith('http')) {
-                urls.push(`${location.origin}/api/login`);
-            }
-            urls.push('http://localhost:8080/api/login');
-            urls.push('http://127.0.0.1:8080/api/login');
-            return [...new Set(urls)];
-        }
-
-        async function loginViaHttp(username, password) {
-            const payload = { username, password };
-            const urls = getLoginApiUrls();
-
-            for (const url of urls) {
-                try {
-                    const response = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        mode: 'cors',
-                        cache: 'no-store',
-                        body: JSON.stringify(payload)
-                    });
-
-                    const data = await response.json().catch(() => ({}));
-                    if (response.ok && data.ok) {
-                        return data;
-                    }
-
-                    if (response.status === 401) {
-                        throw new Error(data.message || 'Nieprawidłowe hasło!');
-                    }
-
-                    if (response.status === 400) {
-                        throw new Error(data.message || 'Nieprawidłowe dane logowania.');
-                    }
-                } catch (err) {
-                    if (url === urls[urls.length - 1]) {
-                        throw err;
-                    }
-                }
-            }
-
-            throw new Error('Nie udało się połączyć z API logowania.');
-        }
-
-        function getNextSocketUrl() {
-            if (!WS_URL_CANDIDATES.length) {
-                return 'ws://localhost:8080/ws';
-            }
-            const url = WS_URL_CANDIDATES[socketUrlIndex % WS_URL_CANDIDATES.length];
-            socketUrlIndex = (socketUrlIndex + 1) % WS_URL_CANDIDATES.length;
-            return url;
-        }
-
-        function connectToServer(forceNew = false) {
-            if (socket && !forceNew && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+        function connectToServer() {
+            if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
                 return;
             }
 
-            if (reconnectTimer) {
-                clearTimeout(reconnectTimer);
-                reconnectTimer = null;
-            }
-
-            if (forceNew && socket) {
-                try { socket.close(); } catch (e) {}
-                socket = null;
-            }
-
-            const serverUrl = getNextSocketUrl();
-            socket = new WebSocket(serverUrl);
+            socket = new WebSocket(SERVER_URL);
 
             socket.onopen = () => {
                 authConnectedOnce = true;
-                reconnectAttempts = 0;
                 authError.innerText = "";
                 const savedUser = localStorage.getItem('bc_remember_user');
                 const savedPass = localStorage.getItem('bc_remember_pass');
@@ -1270,8 +1161,33 @@
                 }
 
                 if (msg.type === 'LOGIN_SUCCESS') {
-                    handleSuccessfulLogin(msg);
+                    myUsername = msg.username;
+                    playerPoints = Number(msg.points) || 0;
+                    globalPointsVal.innerText = playerPoints;
+                    localStorage.setItem('beatclicker_points', playerPoints);
+
+                    if (typeof msg.elo === 'number') {
+                        playerElo = Number(msg.elo) || playerElo;
+                        localStorage.setItem('beatclicker_elo', String(playerElo));
+                        updateEloDisplay();
+                    }
+
+                    if (authRememberIn.checked) {
+                        localStorage.setItem('bc_remember_user', authUserIn.value.trim());
+                        localStorage.setItem('bc_remember_pass', authPasswordIn.value.trim());
+                    } else {
+                        localStorage.removeItem('bc_remember_user');
+                        localStorage.removeItem('bc_remember_pass');
+                    }
+
                     pendingLogin = null;
+                    authError.innerText = "";
+                    authOverlay.style.opacity = 0;
+                    setTimeout(() => authOverlay.style.display = 'none', 500);
+
+                    if (menuAudio.paused && menuAudio.src !== "") {
+                        menuAudio.play().catch(e => console.log(e));
+                    }
                 }
 
                 if (msg.type === 'LOGIN_ERROR') {
@@ -1280,29 +1196,18 @@
             };
 
             socket.onerror = () => {
-                if (pendingLogin) {
-                    authError.innerText = "Błąd połączenia z serwerem.";
-                }
+                authError.innerText = "Błąd połączenia z serwerem.";
             };
 
             socket.onclose = () => {
+                setTimeout(connectToServer, 2500);
                 if (pendingLogin) {
-                    reconnectAttempts += 1;
-                    authError.innerText = `Brak połączenia z serwerem. Próba ${reconnectAttempts}/${WS_URL_CANDIDATES.length * 3}...`;
-
-                    if (reconnectAttempts < WS_URL_CANDIDATES.length * 3) {
-                        reconnectTimer = setTimeout(() => connectToServer(true), 1200);
-                    } else {
-                        authError.innerText = "Nie mogę połączyć z serwerem. Uruchom server.js na porcie 8080 i odśwież stronę.";
-                    }
-                    return;
+                    authError.innerText = "Brak połączenia, ponawiam próbę...";
                 }
-
-                reconnectTimer = setTimeout(() => connectToServer(true), 4000);
             };
         }
 
-        async function submitAuth() {
+        function submitAuth() {
             const user = authUserIn.value.trim();
             const pass = authPasswordIn.value.trim();
 
@@ -1314,14 +1219,7 @@
             pendingLogin = { username: user, password: pass };
             authError.innerText = "Łączenie z serwerem...";
 
-            try {
-                const data = await loginViaHttp(user, pass);
-                handleSuccessfulLogin(data);
-            } catch (httpErr) {
-                console.log('HTTP login fallback failed:', httpErr);
-            }
-
-            connectToServer(true);
+            connectToServer();
             if (socket && socket.readyState === WebSocket.OPEN) {
                 sendLoginPayload();
             }
