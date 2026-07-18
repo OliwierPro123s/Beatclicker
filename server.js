@@ -7,6 +7,7 @@ const { randomUUID } = require('crypto');
 
 const port = process.env.PORT || 8080;
 const publicIndex = path.join(__dirname, 'index.html');
+const usersDbPath = path.join(__dirname, 'users_db.json');
 
 const server = http.createServer((req, res) => {
     try {
@@ -45,6 +46,50 @@ let onlineCount = 0;
 let duelLobbies = new Map();
 
 console.log(`Serwer BeatClicker działa na porcie ${port}`);
+
+function loadUsers() {
+    try {
+        if (!fs.existsSync(usersDbPath)) {
+            users = Object.create(null);
+            return;
+        }
+
+        const raw = fs.readFileSync(usersDbPath, 'utf8');
+        const parsed = JSON.parse(raw);
+        const nextUsers = Object.create(null);
+
+        if (parsed && typeof parsed === 'object') {
+            for (const [username, user] of Object.entries(parsed)) {
+                const safeUsername = normalizeText(username);
+                if (!safeUsername) continue;
+
+                nextUsers[safeUsername] = {
+                    password: normalizeText(user && user.password) || '',
+                    points: Math.max(0, Math.round(Number(user && user.points) || 0)),
+                    elo: Math.max(0, Math.round(Number(user && user.elo) || 1000))
+                };
+            }
+        }
+
+        users = nextUsers;
+        console.log(`Wczytano użytkowników: ${Object.keys(users).length}`);
+    } catch (err) {
+        console.error('Nie udało się wczytać users_db.json:', err.message);
+        users = Object.create(null);
+    }
+}
+
+function saveUsers() {
+    try {
+        const tmpPath = usersDbPath + '.tmp';
+        fs.writeFileSync(tmpPath, JSON.stringify(users, null, 2), 'utf8');
+        fs.renameSync(tmpPath, usersDbPath);
+    } catch (err) {
+        console.error('Nie udało się zapisać users_db.json:', err.message);
+    }
+}
+
+loadUsers();
 
 function normalizeText(value) {
     return typeof value === 'string' ? value.trim() : '';
@@ -189,6 +234,7 @@ function finalizeMatch(lobby) {
 
     setUserElo(lobby.host, newHostElo);
     setUserElo(lobby.guest, newGuestElo);
+    saveUsers();
 
     safeSend(lobby.hostWs, {
         type: '1V1_RESULT',
@@ -236,6 +282,7 @@ function startMatch(lobby) {
         trackUrl: lobby.trackUrl,
         title: lobby.title,
         duration: lobby.duration,
+        difficulty: lobby.difficulty || 'normal',
         startInMs
     });
 
@@ -247,6 +294,7 @@ function startMatch(lobby) {
         trackUrl: lobby.trackUrl,
         title: lobby.title,
         duration: lobby.duration,
+        difficulty: lobby.difficulty || 'normal',
         startInMs
     });
 
@@ -307,6 +355,7 @@ wss.on('connection', (ws, req) => {
 
                 if (!users[username]) {
                     users[username] = { password, points: 0, elo: 1000 };
+                    saveUsers();
                 }
 
                 if (users[username].password === password) {
@@ -315,6 +364,7 @@ wss.on('connection', (ws, req) => {
                         users[username].elo = 1000;
                     }
 
+                    saveUsers();
                     safeSend(ws, {
                         type: 'LOGIN_SUCCESS',
                         username,
@@ -339,6 +389,7 @@ wss.on('connection', (ws, req) => {
                 if (!Number.isFinite(points) || points < 0) return;
 
                 users[ws.username].points = points;
+                saveUsers();
                 broadcastLeaderboard();
                 return;
             }
@@ -356,6 +407,7 @@ wss.on('connection', (ws, req) => {
 
                 const trackUrl = normalizeText(data.trackUrl);
                 const title = normalizeText(data.title) || 'Bez tytułu';
+                const difficulty = ['easy', 'normal', 'hard'].includes(normalizeText(data.difficulty)) ? normalizeText(data.difficulty) : 'normal';
                 const duration = Number(data.duration) || 0;
 
                 if (!trackUrl) {
@@ -379,6 +431,7 @@ wss.on('connection', (ws, req) => {
                     trackUrl,
                     title,
                     duration,
+                    difficulty,
                     createdAt: Date.now(),
                     status: 'waiting',
                     results: new Map(),
@@ -393,7 +446,8 @@ wss.on('connection', (ws, req) => {
                     lobbyId,
                     title,
                     trackUrl,
-                    duration
+                    duration,
+                    difficulty
                 });
 
                 broadcastDuelLobbies();

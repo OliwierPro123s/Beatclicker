@@ -940,6 +940,14 @@
                         <label for="duel-url-input">Link do muzyki (URL):</label>
                         <input type="text" id="duel-url-input" placeholder="https://twojastrona.pl/muzyka.mp3">
                     </div>
+                    <div class="input-group">
+                        <label for="duel-difficulty-input">Poziom trudności 1VS1:</label>
+                        <select id="duel-difficulty-input">
+                            <option value="easy">Easy</option>
+                            <option value="normal" selected>Normal</option>
+                            <option value="hard">Hard</option>
+                        </select>
+                    </div>
                     <button class="duel-action-btn" id="duel-create-btn" onclick="createDuelLobby()">Stwórz grę</button>
                     <button class="duel-action-btn secondary" id="duel-cancel-btn" onclick="cancelDuelLobby()" style="display:none;">Anuluj oczekiwanie</button>
                     <div id="duel-create-status" class="duel-status"></div>
@@ -1914,6 +1922,7 @@
         (() => {
             const globalEloVal = document.getElementById('global-elo-val');
             const duelUrlInput = document.getElementById('duel-url-input');
+            const duelDifficultyInput = document.getElementById('duel-difficulty-input');
             const duelCreateBtn = document.getElementById('duel-create-btn');
             const duelCancelBtn = document.getElementById('duel-cancel-btn');
             const duelCreateStatus = document.getElementById('duel-create-status');
@@ -1933,6 +1942,7 @@
             let duelCurrentTrack = null;
             let duelCurrentTitle = '';
             let duelCurrentDuration = 0;
+            let duelCurrentDifficulty = 'normal';
             let duelCurrentOpponent = '';
             let duelCurrentUrl = '';
             let hookedSocket = null;
@@ -2024,12 +2034,13 @@
                     const duration = formatDuration(lobby.duration || 0);
                     const title = escapeHtml(lobby.title || 'Bez tytułu');
                     const host = escapeHtml(lobby.host || '??');
+                    const difficulty = escapeHtml(String(lobby.difficulty || 'normal').toUpperCase());
                     const id = escapeHtml(lobby.id);
                     return `
                         <div class="duel-lobby-item">
                             <div class="duel-lobby-meta">
                                 <div class="duel-lobby-top">${host} • ${title}</div>
-                                <div class="duel-lobby-bottom">${duration}</div>
+                                <div class="duel-lobby-bottom">${duration} • ${difficulty}</div>
                             </div>
                             <button class="duel-lobby-join" onclick="joinDuelLobby('${id}')">Dołącz</button>
                         </div>
@@ -2061,6 +2072,8 @@
                         duelModeActive = true;
                         duelResultSent = false;
                         duelStartTimer && clearTimeout(duelStartTimer);
+                        duelCurrentDifficulty = msg.difficulty || duelCurrentDifficulty || 'normal';
+                        if (duelDifficultyInput && msg.difficulty) duelDifficultyInput.value = msg.difficulty;
                         setDuelStatus(`Utworzono grę. Czekasz na przeciwnika...`);
                         duelCancelBtn.style.display = 'block';
                         duelCreateBtn.disabled = true;
@@ -2076,6 +2089,8 @@
                         duelCurrentTrack = msg.trackUrl || '';
                         duelCurrentTitle = msg.title || '';
                         duelCurrentDuration = Number(msg.duration) || 0;
+                        duelCurrentDifficulty = msg.difficulty || duelCurrentDifficulty || 'normal';
+                        if (duelDifficultyInput && msg.difficulty) duelDifficultyInput.value = msg.difficulty;
                         duelResultSent = false;
                         setDuelStatus(`Gra rozpoczęta: ${duelCurrentOpponent ? 'vs ' + duelCurrentOpponent : '1VS1'}.`);
 
@@ -2086,7 +2101,8 @@
                                 opponent: duelCurrentOpponent,
                                 trackUrl: duelCurrentTrack,
                                 title: duelCurrentTitle,
-                                duration: duelCurrentDuration
+                                duration: duelCurrentDuration,
+                                difficulty: duelCurrentDifficulty
                             });
                         }, Math.max(0, Number(msg.startInMs) || 1200));
                     }
@@ -2163,6 +2179,7 @@
                     type: 'CREATE_1V1_LOBBY',
                     trackUrl: url,
                     title,
+                    difficulty: duelDifficultyInput?.value || 'normal',
                     duration: 0
                 };
 
@@ -2242,6 +2259,7 @@
                 duelCurrentTrack = '';
                 duelCurrentTitle = '';
                 duelCurrentDuration = 0;
+                duelCurrentDifficulty = 'normal';
                 duelCurrentOpponent = '';
                 duelResultSent = false;
                 if (duelStartTimer) {
@@ -2270,7 +2288,7 @@
                 duelResultSent = false;
 
                 try {
-                    selectedDifficulty = 'normal';
+                    selectedDifficulty = config.difficulty || 'normal';
                     isEndlessMode = false;
                     endlessSpeedMultiplier = 1.0;
                     activeThemeKey = document.getElementById('theme-color')?.value || 'rainbow';
