@@ -1,18 +1,45 @@
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 const { WebSocketServer, WebSocket } = require('ws');
 
 const port = process.env.PORT || 8080;
+const indexPath = path.join(__dirname, 'index.html');
 
-// Prosty serwer HTTP wymagany przez wiele hostingów (np. Render)
 const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end('BeatClicker WebSocket server is running');
+    try {
+        if (req.url === '/' || req.url === '/index.html') {
+            if (!fs.existsSync(indexPath)) {
+                res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+                res.end('Brak pliku index.html obok server.js');
+                return;
+            }
+
+            const html = fs.readFileSync(indexPath, 'utf8');
+            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+            res.end(html);
+            return;
+        }
+
+        if (req.url === '/health') {
+            res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+            res.end('ok');
+            return;
+        }
+
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Not found');
+    } catch (err) {
+        console.error('Błąd HTTP:', err);
+        res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Błąd serwera');
+    }
 });
 
-// WebSocket podpięty do tego samego serwera HTTP
+// WebSocket na osobnej ścieżce
 const wss = new WebSocketServer({ noServer: true });
 
-// Udawana baza danych w pamięci serwera
+// Prosta baza w pamięci
 let users = {};
 let onlineCount = 0;
 
@@ -28,23 +55,23 @@ function getTopPlayers() {
         .slice(0, 10);
 }
 
-function safeSend(ws, data) {
+function safeSend(ws, payload) {
     if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(data));
+        ws.send(JSON.stringify(payload));
     }
 }
 
 function broadcastOnlineCount() {
-    const message = JSON.stringify({ type: 'ONLINE_COUNT', count: onlineCount });
+    const msg = JSON.stringify({ type: 'ONLINE_COUNT', count: onlineCount });
     wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) client.send(message);
+        if (client.readyState === WebSocket.OPEN) client.send(msg);
     });
 }
 
 function broadcastLeaderboard() {
-    const message = JSON.stringify({ type: 'LEADERBOARD', data: getTopPlayers() });
+    const msg = JSON.stringify({ type: 'LEADERBOARD', data: getTopPlayers() });
     wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) client.send(message);
+        if (client.readyState === WebSocket.OPEN) client.send(msg);
     });
 }
 
@@ -57,12 +84,10 @@ wss.on('connection', (ws, req) => {
     ws.isAlive = true;
     ws.username = null;
 
-    console.log(`Nowe połączenie WebSocket z: ${req.socket.remoteAddress || 'unknown'}`);
+    console.log(`WS connected: ${req.socket.remoteAddress || 'unknown'}`);
     broadcastOnlineCount();
-
-    // Na start wysyłamy leaderboard nowemu klientowi
-    safeSend(ws, { type: 'LEADERBOARD', data: getTopPlayers() });
     safeSend(ws, { type: 'ONLINE_COUNT', count: onlineCount });
+    safeSend(ws, { type: 'LEADERBOARD', data: getTopPlayers() });
 
     ws.on('pong', () => {
         ws.isAlive = true;
@@ -94,12 +119,7 @@ wss.on('connection', (ws, req) => {
                 }
 
                 if (!users[username]) {
-                    // Rejestracja nowego konta
-                    users[username] = {
-                        password,
-                        points: 0
-                    };
-
+                    users[username] = { password, points: 0 };
                     ws.username = username;
 
                     safeSend(ws, {
@@ -112,7 +132,6 @@ wss.on('connection', (ws, req) => {
                     return;
                 }
 
-                // Logowanie do istniejącego konta
                 if (users[username].password === password) {
                     ws.username = username;
 
@@ -139,7 +158,6 @@ wss.on('connection', (ws, req) => {
 
                 users[ws.username].points = points;
                 broadcastLeaderboard();
-                return;
             }
         } catch (e) {
             console.error('Błąd parsowania wiadomości:', e);
@@ -161,13 +179,12 @@ wss.on('connection', (ws, req) => {
     });
 });
 
-// Upgrade HTTP -> WebSocket
 server.on('upgrade', (req, socket, head) => {
     try {
         const url = new URL(req.url, `http://${req.headers.host}`);
 
-        // Pozwalamy na / i /ws
-        if (url.pathname !== '/' && url.pathname !== '/ws') {
+        // Akceptujemy WS tylko na /ws i /, żeby było kompatybilnie
+        if (url.pathname !== '/ws' && url.pathname !== '/') {
             socket.destroy();
             return;
         }
@@ -180,7 +197,7 @@ server.on('upgrade', (req, socket, head) => {
     }
 });
 
-// Heartbeat, żeby serwer wyłapywał martwe połączenia
+// Heartbeat
 const interval = setInterval(() => {
     wss.clients.forEach((ws) => {
         if (ws.isAlive === false) {

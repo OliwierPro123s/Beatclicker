@@ -781,7 +781,7 @@
 
     <script>
         // === ZAKTUALIZOWANY ADRES ZEZWALAJĄCY NA BEZPIECZNE SZYFROWANE POŁĄCZENIE WEBSOCKET ===[cite: 2]
-        const SERVER_URL = "wss://beatclick-ku9l.onrender.com"; 
+        const SERVER_URL = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`;
 
         let socket = null;
         let reconnectTimer = null;
@@ -1653,7 +1653,7 @@
                         currentGlowColor = `hsl(${(performance.now() / 5) % 360}, 100%, 65%)`;
                     } else {
                         currentGlowColor = getThemeSpecs(activeThemeKey).glow;
-                    }
+                    }F
 
                     ctx.beginPath(); ctx.arc(mouseX, mouseY, 7, 0, Math.PI * 2);
                     ctx.fillStyle = '#ffffff'; ctx.shadowBlur = 15; ctx.shadowColor = currentGlowColor; ctx.fill();
