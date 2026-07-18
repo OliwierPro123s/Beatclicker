@@ -2141,30 +2141,39 @@
                     return;
                 }
 
-                try {
-                    duelCreateBtn.disabled = true;
-                    setDuelStatus('Wczytywanie metadanych muzyki...');
-                    const duration = await loadAudioMetadata(url);
-                    const title = titleFromUrl(url);
+                // Tak jak w zakładce GRAJ: najpierw wysyłamy URL,
+                // bez blokowania tworzenia gry na pobieraniu metadanych.
+                const title = titleFromUrl(url);
+                const payload = {
+                    type: 'CREATE_1V1_LOBBY',
+                    trackUrl: url,
+                    title,
+                    duration: 0
+                };
 
-                    const ok = sendSocket({
-                        type: 'CREATE_1V1_LOBBY',
-                        trackUrl: url,
-                        title,
-                        duration
-                    });
+                duelCreateBtn.disabled = true;
+                setDuelStatus('Tworzę grę 1VS1...');
 
-                    if (!ok) {
-                        duelCreateBtn.disabled = false;
-                        setDuelStatus('Brak połączenia z serwerem.', true);
-                        return;
-                    }
-
-                    setDuelStatus(`Tworzysz grę: ${title} (${formatDuration(duration)}).`);
-                } catch (err) {
+                const ok = sendSocket(payload);
+                if (!ok) {
                     duelCreateBtn.disabled = false;
-                    setDuelStatus(err.message || 'Nie udało się przygotować gry.', true);
+                    setDuelStatus('Brak połączenia z serwerem.', true);
+                    return;
                 }
+
+                // Opcjonalnie próbujemy pobrać metadane tylko dla podglądu,
+                // ale nie blokujemy tworzenia lobby, jeśli link nie zwraca duration.
+                loadAudioMetadata(url)
+                    .then(duration => {
+                        if (Number.isFinite(duration) && duration > 0) {
+                            setDuelStatus(`Tworzysz grę: ${title} (${formatDuration(duration)}).`);
+                        } else {
+                            setDuelStatus(`Tworzysz grę: ${title}.`);
+                        }
+                    })
+                    .catch(() => {
+                        setDuelStatus(`Tworzysz grę: ${title}.`);
+                    });
             };
 
             window.cancelDuelLobby = function () {
@@ -2414,6 +2423,14 @@
 
             if (socket) {
                 hookSocket();
+            }
+
+            if (duelUrlInput) {
+                duelUrlInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        createDuelLobby();
+                    }
+                });
             }
 
             if (myUsername) {
