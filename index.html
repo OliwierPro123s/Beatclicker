@@ -254,28 +254,6 @@
             box-shadow: 0 0 5px rgba(0, 255, 255, 0.3);
         }
 
-        /* Naprawa klikalności pól wyboru i selectów */
-        #section-play .input-group,
-        #section-1v1 .input-group {
-            position: relative;
-            z-index: 25;
-        }
-
-        #section-play select,
-        #section-play input,
-        #section-play button,
-        #section-1v1 select,
-        #section-1v1 input,
-        #section-1v1 button {
-            position: relative;
-            z-index: 30;
-            pointer-events: auto;
-        }
-
-        #section-play select,
-        #section-1v1 select {
-            cursor: pointer;
-        }
 
         .tab-btn:nth-child(3) { animation: btnIntro 1s cubic-bezier(0.15, 0.85, 0.35, 1) 0.7s forwards, btnFloat 4s ease-in-out infinite 1s; }
 
@@ -1166,12 +1144,6 @@
                     globalPointsVal.innerText = playerPoints;
                     localStorage.setItem('beatclicker_points', playerPoints);
 
-                    if (typeof msg.elo === 'number') {
-                        playerElo = Number(msg.elo) || playerElo;
-                        localStorage.setItem('beatclicker_elo', String(playerElo));
-                        updateEloDisplay();
-                    }
-
                     if (authRememberIn.checked) {
                         localStorage.setItem('bc_remember_user', authUserIn.value.trim());
                         localStorage.setItem('bc_remember_pass', authPasswordIn.value.trim());
@@ -1973,7 +1945,6 @@
             let duelCurrentDifficulty = 'normal';
             let duelCurrentOpponent = '';
             let duelCurrentUrl = '';
-            let duelStartTimestamp = 0;
             let hookedSocket = null;
 
             function updateEloDisplay() {
@@ -2137,7 +2108,22 @@
                     }
 
                     if (msg.type === '1V1_RESULT') {
-                        applyDuelResolutionFromServer(msg);
+                        if (typeof msg.newElo === 'number') {
+                            playerElo = msg.newElo;
+                            localStorage.setItem('beatclicker_elo', String(playerElo));
+                            updateEloDisplay();
+                        }
+
+                        const delta = Number(msg.delta || 0);
+                        const sign = delta > 0 ? '+' : '';
+                        setDuelStatus(`Wynik 1VS1: ${msg.outcome === 'win' ? 'Wygrałeś' : msg.outcome === 'loss' ? 'Przegrałeś' : 'Remis'} (${sign}${delta} ELO).`);
+                        duelModeActive = false;
+                        duelLobbyId = null;
+                        duelRole = null;
+                        duelResultSent = false;
+                        duelCreateBtn.disabled = false;
+                        duelCancelBtn.style.display = 'none';
+                        duelUrlInput.disabled = false;
                     }
 
                     if (msg.type === '1V1_ERROR') {
@@ -2149,10 +2135,14 @@
 
                     if (msg.type === '1V1_CANCELLED') {
                         if (duelLobbyId && msg.lobbyId === duelLobbyId) {
-                            setDuelStatus(msg.reason === 'rozłączono' ? 'Przeciwnik rozłączył się.' : 'Gra została anulowana.');
-                            clearDuelLocalState();
-                            gameActive = false;
-                            if (audioPlayer) audioPlayer.pause();
+                            setDuelStatus('Gra została anulowana.');
+                            duelModeActive = false;
+                            duelLobbyId = null;
+                            duelRole = null;
+                            duelResultSent = false;
+                            duelCreateBtn.disabled = false;
+                            duelCancelBtn.style.display = 'none';
+                            duelUrlInput.disabled = false;
                         }
                     }
                 });
@@ -2252,93 +2242,15 @@
                 setDuelStatus('Dołączanie do gry...');
             };
 
-            function submitDuelResultIfNeeded(status) {
+            function submitDuelResultIfNeeded() {
                 if (!duelModeActive || !duelLobbyId || duelResultSent) return;
                 duelResultSent = true;
-                const survivalMs = duelStartTimestamp ? Math.max(0, Math.round(performance.now() - duelStartTimestamp)) : 0;
                 sendSocket({
                     type: 'SUBMIT_1V1_RESULT',
                     lobbyId: duelLobbyId,
                     score: Number(score || 0),
-                    survivalMs,
-                    status: status || 'survived',
                     finished: true
                 });
-            }
-
-            function previewDuelOutcome(outcome) {
-                gameActive = false;
-                isGameOver = outcome === 'loss';
-                isVictory = outcome === 'win';
-
-                if (audioPlayer) {
-                    audioPlayer.pause();
-                }
-                if (audioSource) {
-                    try { audioSource.stop(); } catch (e) {}
-                }
-
-                if (outcome === 'win') {
-                    if (victoryAudio) {
-                        victoryAudio.currentTime = 0;
-                        victoryAudio.play().catch(() => {});
-                    }
-                    if (vicScoreVal) vicScoreVal.innerText = String(score || 0);
-                    if (earnedPointsVal) earnedPointsVal.innerText = '0';
-                    victoryScreen.style.display = 'flex';
-                    gameOverScreen.style.display = 'none';
-                } else if (outcome === 'loss') {
-                    if (defeatAudio) {
-                        defeatAudio.currentTime = 0;
-                        defeatAudio.play().catch(() => {});
-                    }
-                    if (endScoreVal) endScoreVal.innerText = String(score || 0);
-                    gameOverScreen.style.display = 'flex';
-                    victoryScreen.style.display = 'none';
-                }
-            }
-
-            function applyDuelResolutionFromServer(msg) {
-                if (duelStartTimer) {
-                    clearTimeout(duelStartTimer);
-                    duelStartTimer = null;
-                }
-
-                if (typeof msg.newElo === 'number') {
-                    playerElo = Number(msg.newElo) || playerElo;
-                    localStorage.setItem('beatclicker_elo', String(playerElo));
-                    updateEloDisplay();
-                }
-
-                const outcome = msg.outcome || 'draw';
-                const delta = Number(msg.delta || 0);
-                const sign = delta > 0 ? '+' : '';
-                setDuelStatus(`Wynik 1VS1: ${outcome === 'win' ? 'Wygrałeś' : outcome === 'loss' ? 'Przegrałeś' : 'Remis'} (${sign}${delta} ELO).`);
-
-                duelModeActive = false;
-                duelLobbyId = null;
-                duelRole = null;
-                duelResultSent = true;
-                duelCurrentTrack = '';
-                duelCurrentTitle = '';
-                duelCurrentDuration = 0;
-                duelCurrentDifficulty = 'normal';
-                duelCurrentOpponent = '';
-                duelCreateBtn.disabled = false;
-                duelCancelBtn.style.display = 'none';
-                duelUrlInput.disabled = false;
-
-                if (outcome === 'win') {
-                    previewDuelOutcome('win');
-                } else if (outcome === 'loss') {
-                    previewDuelOutcome('loss');
-                } else {
-                    if (audioPlayer) audioPlayer.pause();
-                    if (audioSource) { try { audioSource.stop(); } catch (e) {} }
-                    gameActive = false;
-                    isVictory = false;
-                    isGameOver = false;
-                }
             }
 
             function clearDuelLocalState() {
@@ -2349,7 +2261,6 @@
                 duelCurrentDuration = 0;
                 duelCurrentDifficulty = 'normal';
                 duelCurrentOpponent = '';
-                duelStartTimestamp = 0;
                 duelResultSent = false;
                 if (duelStartTimer) {
                     clearTimeout(duelStartTimer);
@@ -2375,7 +2286,6 @@
                 duelCurrentDuration = Number(config.duration) || 0;
                 duelCurrentOpponent = config.opponent || '';
                 duelResultSent = false;
-                duelStartTimestamp = performance.now();
 
                 try {
                     selectedDifficulty = config.difficulty || 'normal';
@@ -2446,8 +2356,25 @@
                     return originalTriggerVictory.apply(this, arguments);
                 }
 
-                submitDuelResultIfNeeded('survived');
-                previewDuelOutcome('win');
+                if (audioPlayer) {
+                    audioPlayer.pause();
+                }
+
+                submitDuelResultIfNeeded();
+
+                gameActive = false;
+                isVictory = true;
+
+                if (victoryAudio) {
+                    victoryAudio.currentTime = 0;
+                    victoryAudio.play().catch(() => {});
+                }
+
+                if (vicScoreVal) vicScoreVal.innerText = String(score || 0);
+                if (earnedPointsVal) earnedPointsVal.innerText = '0';
+
+                victoryScreen.style.display = 'flex';
+                duelModeActive = false;
             };
 
             const originalTriggerGameOver = window.triggerGameOver;
@@ -2456,8 +2383,23 @@
                     return originalTriggerGameOver.apply(this, arguments);
                 }
 
-                submitDuelResultIfNeeded('dead');
-                previewDuelOutcome('loss');
+                if (audioPlayer) {
+                    audioPlayer.pause();
+                }
+
+                submitDuelResultIfNeeded();
+
+                gameActive = false;
+                isGameOver = true;
+
+                if (defeatAudio) {
+                    defeatAudio.currentTime = 0;
+                    defeatAudio.play().catch(() => {});
+                }
+
+                if (endScoreVal) endScoreVal.innerText = String(score || 0);
+                gameOverScreen.style.display = 'flex';
+                duelModeActive = false;
             };
 
             const originalGoToMenu = window.goToMenu;
