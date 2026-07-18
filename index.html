@@ -1058,7 +1058,15 @@
 
         const MENU_AUDIO_SRC = "https://vgmtreasurechest.com/soundtracks/demonic-mahjong-android-ios-macos-mobile-steam-windows-gamerip-2025/zusdrcmwnu/Boss%20Match.mp3";
 
-        const SERVER_URL = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`;
+        const WS_PORT_FALLBACK = 8080;
+        const WS_URL_CANDIDATES = (() => {
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const candidates = [];
+            if (location.host) candidates.push(`${protocol}//${location.host}/ws`);
+            candidates.push(`${protocol}//localhost:${WS_PORT_FALLBACK}/ws`);
+            candidates.push(`${protocol}//127.0.0.1:${WS_PORT_FALLBACK}/ws`);
+            return [...new Set(candidates)];
+        })();
 
         const authOverlay = document.getElementById('auth-overlay');
         const authUserIn = document.getElementById('auth-username');
@@ -1072,6 +1080,9 @@
         let myUsername = "";
         let pendingLogin = null;
         let authConnectedOnce = false;
+        let socketUrlIndex = 0;
+        let reconnectTimer = null;
+        let reconnectAttempts = 0;
 
         const menuAudio = document.getElementById('menu-audio');
         const defeatAudio = document.getElementById('defeat-audio');
@@ -1123,15 +1134,36 @@
             }));
         }
 
-        function connectToServer() {
-            if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+        function getNextSocketUrl() {
+            if (!WS_URL_CANDIDATES.length) {
+                return 'ws://localhost:8080/ws';
+            }
+            const url = WS_URL_CANDIDATES[socketUrlIndex % WS_URL_CANDIDATES.length];
+            socketUrlIndex = (socketUrlIndex + 1) % WS_URL_CANDIDATES.length;
+            return url;
+        }
+
+        function connectToServer(forceNew = false) {
+            if (socket && !forceNew && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
                 return;
             }
 
-            socket = new WebSocket(SERVER_URL);
+            if (reconnectTimer) {
+                clearTimeout(reconnectTimer);
+                reconnectTimer = null;
+            }
+
+            if (forceNew && socket) {
+                try { socket.close(); } catch (e) {}
+                socket = null;
+            }
+
+            const serverUrl = getNextSocketUrl();
+            socket = new WebSocket(serverUrl);
 
             socket.onopen = () => {
                 authConnectedOnce = true;
+                reconnectAttempts = 0;
                 authError.innerText = "";
                 const savedUser = localStorage.getItem('bc_remember_user');
                 const savedPass = localStorage.getItem('bc_remember_pass');
@@ -1196,14 +1228,25 @@
             };
 
             socket.onerror = () => {
-                authError.innerText = "Błąd połączenia z serwerem.";
+                if (pendingLogin) {
+                    authError.innerText = "Błąd połączenia z serwerem.";
+                }
             };
 
             socket.onclose = () => {
-                setTimeout(connectToServer, 2500);
                 if (pendingLogin) {
-                    authError.innerText = "Brak połączenia, ponawiam próbę...";
+                    reconnectAttempts += 1;
+                    authError.innerText = `Brak połączenia z serwerem. Próba ${reconnectAttempts}/${WS_URL_CANDIDATES.length * 3}...`;
+
+                    if (reconnectAttempts < WS_URL_CANDIDATES.length * 3) {
+                        reconnectTimer = setTimeout(() => connectToServer(true), 1200);
+                    } else {
+                        authError.innerText = "Nie mogę połączyć z serwerem. Uruchom server.js na porcie 8080 i odśwież stronę.";
+                    }
+                    return;
                 }
+
+                reconnectTimer = setTimeout(() => connectToServer(true), 4000);
             };
         }
 
