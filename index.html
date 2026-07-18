@@ -891,10 +891,8 @@
             </ul>
         </div>
 
-    </div>
-
-            <!-- SEKCJA 1VS1 -->
-            <div id="section-1v1" class="menu-section">
+        <!-- SEKCJA 1VS1 -->
+<div id="section-1v1" class="menu-section">
                 <div class="input-group" style="margin-bottom: 14px;">
                     <label style="margin-bottom: 0; font-size: 0.95rem; color: #00ffcc;">Tryb 1VS1</label>
                     <div style="margin-top: 8px; color: #bbb; font-size: 0.9rem; line-height: 1.45;">
@@ -924,6 +922,8 @@
                     </div>
                 </div>
             </div>
+
+    </div>
 
     <!-- EKRAN GRY -->
     <div id="game-container">
@@ -1293,25 +1293,30 @@
         // Zmiana zakładki ze Swipe + Glitch Effect
         function switchTab(target) {
             const buttons = document.querySelectorAll('.tab-btn');
-            const targetBtn = Array.from(buttons).find(b => b.innerText.toLowerCase() === target);
-            
-            if (targetBtn && targetBtn.classList.contains('active-tab')) {
+            const sections = document.querySelectorAll('.menu-section');
+            const normalized = String(target || '').toLowerCase();
+            const activeTargetBtn = Array.from(buttons).find(b => b.innerText.toLowerCase() === normalized);
+
+            if (activeTargetBtn && activeTargetBtn.classList.contains('active-tab')) {
                 playSwipeSound();
                 buttons.forEach(b => b.classList.remove('active-tab'));
-                document.querySelectorAll('.menu-section').forEach(sec => sec.classList.remove('active-section'));
+                sections.forEach(sec => sec.classList.remove('active-section'));
                 return;
             }
 
             playSwipeSound();
             buttons.forEach(tab => tab.classList.remove('active-tab'));
-            document.querySelectorAll('.menu-section').forEach(sec => sec.classList.remove('active-section'));
+            sections.forEach(sec => sec.classList.remove('active-section'));
 
-            if (target === 'play') {
-                buttons[0].classList.add('active-tab');
-                document.getElementById('section-play').classList.add('active-section');
-            } else {
-                buttons[1].classList.add('active-tab');
-                document.getElementById('section-settings').classList.add('active-section');
+            if (normalized === 'play') {
+                buttons[0]?.classList.add('active-tab');
+                document.getElementById('section-play')?.classList.add('active-section');
+            } else if (normalized === 'settings') {
+                buttons[1]?.classList.add('active-tab');
+                document.getElementById('section-settings')?.classList.add('active-section');
+            } else if (normalized === '1vs1') {
+                buttons[2]?.classList.add('active-tab');
+                document.getElementById('section-1v1')?.classList.add('active-section');
             }
         }
 
@@ -2336,22 +2341,23 @@
             window.switchTab = function (target) {
                 const buttons = document.querySelectorAll('.tab-btn');
                 const sections = document.querySelectorAll('.menu-section');
+                const normalized = String(target || '').toLowerCase();
                 buttons.forEach(b => b.classList.remove('active-tab'));
                 sections.forEach(s => s.classList.remove('active-section'));
 
-                if (target === 'play') {
+                if (normalized === 'play') {
                     buttons[0]?.classList.add('active-tab');
                     document.getElementById('section-play')?.classList.add('active-section');
                     setDuelStatus('');
                     return;
                 }
-                if (target === 'settings') {
+                if (normalized === 'settings') {
                     buttons[1]?.classList.add('active-tab');
                     document.getElementById('section-settings')?.classList.add('active-section');
                     setDuelPanel('create');
                     return;
                 }
-                if (target === '1vs1') {
+                if (normalized === '1vs1') {
                     buttons[2]?.classList.add('active-tab');
                     document.getElementById('section-1v1')?.classList.add('active-section');
                     setDuelPanel('create');
