@@ -755,6 +755,44 @@
         .leaderboard-item:nth-child(2) { color: #cccccc; }
         .leaderboard-item:nth-child(3) { color: #cd7f32; }
 
+
+        #menu.duel-mode {
+            justify-content: center;
+            padding-left: 0;
+        }
+
+        #menu.duel-mode .menu-left-panel,
+        #menu.duel-mode .leaderboard-box,
+        #menu.duel-mode #menu-points-display {
+            display: none !important;
+        }
+
+        #menu.duel-mode .menu-content-wrapper {
+            width: min(860px, 92vw);
+            margin-left: 0;
+        }
+
+        #section-1v1 {
+            align-items: stretch;
+            justify-content: flex-start;
+            padding: 1rem 0;
+        }
+
+        #section-1v1 .input-group,
+        #section-1v1 .duel-tabs,
+        #section-1v1 .duel-panel {
+            width: 100%;
+        }
+
+        #section-1v1 .duel-tabs {
+            margin-top: 0.25rem;
+        }
+
+        #section-1v1 .duel-action-btn,
+        #section-1v1 .duel-tab-btn {
+            pointer-events: auto;
+        }
+
         #online-counter {
             position: fixed;
             bottom: 20px;
@@ -806,7 +844,7 @@
         <div class="menu-left-panel">
             <h1 class="game-logo">Beat<br>Clicker</h1>
             <div id="menu-points-display">Zgromadzone Punkty: <span id="global-points-val">0</span> | ELO: <span id="global-elo-val">1000</span></div>
-            
+
             <div class="menu-navigation">
                 <button class="tab-btn" onclick="switchTab('play')">GRAJ</button>
                 <button class="tab-btn" onclick="switchTab('settings')">USTAWIENIA</button>
@@ -815,7 +853,6 @@
         </div>
 
         <div class="menu-content-wrapper">
-            <!-- SEKCJA GRAJ -->
             <div id="section-play" class="menu-section">
                 <div class="input-group audio-source-container">
                     <label>1. Wybierz źródło muzyki:</label>
@@ -847,7 +884,7 @@
                 <div id="status-msg"></div>
             </div>
 
-            <!-- SEKCJA USTAWIENIA -->
+
             <div id="section-settings" class="menu-section">
                 <div class="settings-container">
                     <div class="input-group" style="width: 50%;">
@@ -882,17 +919,9 @@
                     <input type="file" id="cursor-img-input" accept="image/*">
                 </div>
             </div>
-        </div>
 
-        <div class="leaderboard-box">
-            <h3>🏆 TOP 10 PUNKTÓW</h3>
-            <ul id="leaderboard-dom-list" class="leaderboard-list">
-                <li style="text-align:center;color:#666;padding-top:20px;">Ładowanie rankingu...</li>
-            </ul>
-        </div>
 
-        <!-- SEKCJA 1VS1 -->
-<div id="section-1v1" class="menu-section">
+            <div id="section-1v1" class="menu-section">
                 <div class="input-group" style="margin-bottom: 14px;">
                     <label style="margin-bottom: 0; font-size: 0.95rem; color: #00ffcc;">Tryb 1VS1</label>
                     <div style="margin-top: 8px; color: #bbb; font-size: 0.9rem; line-height: 1.45;">
@@ -922,7 +951,14 @@
                     </div>
                 </div>
             </div>
+        </div>
 
+        <div class="leaderboard-box">
+            <h3>🏆 TOP 10 PUNKTÓW</h3>
+            <ul id="leaderboard-dom-list" class="leaderboard-list">
+                <li style="text-align:center;color:#666;padding-top:20px;">Ładowanie rankingu...</li>
+            </ul>
+        </div>
     </div>
 
     <!-- EKRAN GRY -->
@@ -1293,30 +1329,25 @@
         // Zmiana zakładki ze Swipe + Glitch Effect
         function switchTab(target) {
             const buttons = document.querySelectorAll('.tab-btn');
-            const sections = document.querySelectorAll('.menu-section');
-            const normalized = String(target || '').toLowerCase();
-            const activeTargetBtn = Array.from(buttons).find(b => b.innerText.toLowerCase() === normalized);
-
-            if (activeTargetBtn && activeTargetBtn.classList.contains('active-tab')) {
+            const targetBtn = Array.from(buttons).find(b => b.innerText.toLowerCase() === target);
+            
+            if (targetBtn && targetBtn.classList.contains('active-tab')) {
                 playSwipeSound();
                 buttons.forEach(b => b.classList.remove('active-tab'));
-                sections.forEach(sec => sec.classList.remove('active-section'));
+                document.querySelectorAll('.menu-section').forEach(sec => sec.classList.remove('active-section'));
                 return;
             }
 
             playSwipeSound();
             buttons.forEach(tab => tab.classList.remove('active-tab'));
-            sections.forEach(sec => sec.classList.remove('active-section'));
+            document.querySelectorAll('.menu-section').forEach(sec => sec.classList.remove('active-section'));
 
-            if (normalized === 'play') {
-                buttons[0]?.classList.add('active-tab');
-                document.getElementById('section-play')?.classList.add('active-section');
-            } else if (normalized === 'settings') {
-                buttons[1]?.classList.add('active-tab');
-                document.getElementById('section-settings')?.classList.add('active-section');
-            } else if (normalized === '1vs1') {
-                buttons[2]?.classList.add('active-tab');
-                document.getElementById('section-1v1')?.classList.add('active-section');
+            if (target === 'play') {
+                buttons[0].classList.add('active-tab');
+                document.getElementById('section-play').classList.add('active-section');
+            } else {
+                buttons[1].classList.add('active-tab');
+                document.getElementById('section-settings').classList.add('active-section');
             }
         }
 
@@ -1737,16 +1768,17 @@
             victoryScreen.style.display = 'flex';
         }
 
-        function goToMenu() {
+                function goToMenu() {
             gameOverScreen.style.display = 'none'; victoryScreen.style.display = 'none'; gameContainer.style.display = 'none';
             bgVideo.style.display = 'none'; bgVideo.pause(); bgImage.style.display = 'none';
             if (audioPlayer) audioPlayer.pause();
             if (audioSource) { try { audioSource.stop(); } catch(e){} }
-            
+
             defeatAudio.pause(); defeatAudio.currentTime = 0;
             victoryAudio.pause(); victoryAudio.currentTime = 0;
 
             // Zresetowanie menu do stanu początkowego
+            menu.classList.remove('duel-mode');
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active-tab'));
             document.querySelectorAll('.menu-section').forEach(sec => sec.classList.remove('active-section'));
 
@@ -1754,7 +1786,7 @@
             setTimeout(() => { menu.style.opacity = 1; menu.style.transform = "scale(1)"; }, 50);
             checkAudioInputs();
             initMenuAmbientCircles();
-            
+
             menuAudio.src = MENU_AUDIO_SRC;
             menuAudio.load();
             menuAudio.currentTime = 0;
@@ -2341,23 +2373,24 @@
             window.switchTab = function (target) {
                 const buttons = document.querySelectorAll('.tab-btn');
                 const sections = document.querySelectorAll('.menu-section');
-                const normalized = String(target || '').toLowerCase();
+
+                menu.classList.toggle('duel-mode', target === '1vs1');
                 buttons.forEach(b => b.classList.remove('active-tab'));
                 sections.forEach(s => s.classList.remove('active-section'));
 
-                if (normalized === 'play') {
+                if (target === 'play') {
                     buttons[0]?.classList.add('active-tab');
                     document.getElementById('section-play')?.classList.add('active-section');
                     setDuelStatus('');
                     return;
                 }
-                if (normalized === 'settings') {
+                if (target === 'settings') {
                     buttons[1]?.classList.add('active-tab');
                     document.getElementById('section-settings')?.classList.add('active-section');
                     setDuelPanel('create');
                     return;
                 }
-                if (normalized === '1vs1') {
+                if (target === '1vs1') {
                     buttons[2]?.classList.add('active-tab');
                     document.getElementById('section-1v1')?.classList.add('active-section');
                     setDuelPanel('create');
@@ -2368,6 +2401,7 @@
                     return;
                 }
 
+                menu.classList.remove('duel-mode');
                 return originalSwitchTab.apply(this, arguments);
             };
 
