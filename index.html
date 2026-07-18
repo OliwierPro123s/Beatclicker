@@ -780,8 +780,8 @@
     </div>
 
     <script>
-        // === ZMIEŃ TEN ADRES NA ADRES SWOJEJ USŁUGI WEBSOCKET NA RENDER ===
-        const SERVER_URL = "ws://localhost:8080"; 
+        // === ZAKTUALIZOWANY ADRES ZEZWALAJĄCY NA BEZPIECZNE SZYFROWANE POŁĄCZENIE WEBSOCKET ===[cite: 2]
+        const SERVER_URL = "wss://beatclick-ku9l.onrender.com"; 
 
         let socket = null;
         let myUsername = "";
@@ -795,13 +795,11 @@
         const onlineCounter = document.getElementById('online-counter');
         const leaderboardList = document.getElementById('leaderboard-dom-list');
 
-        // Funkcja nawiązująca i kontrolująca stabilność połączenia z serwerem
         function connectToServer() {
             socket = new WebSocket(SERVER_URL);
 
             socket.onopen = () => {
                 console.log("Połączono z serwerem Render.");
-                // Sprawdzanie czy użytkownik zaznaczył opcję "Zapamiętaj mnie" w przeszłości
                 const savedUser = localStorage.getItem('bc_remember_user');
                 const savedPass = localStorage.getItem('bc_remember_pass');
                 if (savedUser && savedPass) {
@@ -884,10 +882,9 @@
             });
         }
 
-        // Zainicjowanie systemu sieciowego na start pliku
         connectToServer();
 
-        // ELEMENTY GRY I LOGIKA SILNIKA DŹWIĘKOWEGO ORAZ WIZUALNEGO
+        // ELEMENTY GRY I LOGIKA SILNIKA DŹWIĘKOWEGO ORAZ WIZUALNEGO[cite: 2]
         const menu = document.getElementById('menu');
         const audioInput = document.getElementById('audio-input');
         const audioUrl = document.getElementById('audio-url');
@@ -1500,7 +1497,6 @@
 
             victoryScreen.style.display = 'flex';
 
-            // Automatyczna synchronizacja nowo zdobytych punktów z serwerem
             if (socket && socket.readyState === WebSocket.OPEN) {
                 socket.send(JSON.stringify({ type: 'UPDATE_POINTS', points: playerPoints }));
             }
@@ -1602,7 +1598,6 @@
                     if (particles[i].alpha <= 0) particles.splice(i, 1); else particles[i].draw();
                 }
 
-                // Render Kursora
                 ctx.save();
                 if (activeThemeKey === 'custom' && customCursorLoaded) {
                     const size = 36;
