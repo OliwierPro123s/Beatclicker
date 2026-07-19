@@ -41,11 +41,12 @@
         #menu-cursor-canvas {
             position: fixed;
             inset: 0;
-            z-index: 30;
+            z-index: 999999;
             pointer-events: none;
             display: none;
             width: 100vw;
             height: 100vh;
+            mix-blend-mode: screen;
         }
 
         #menu.custom-cursor-mode, #menu.custom-cursor-mode * {
@@ -1157,18 +1158,17 @@
             const customMode = activeThemeKey === 'custom' && customCursorLoaded;
 
             if (customMode) {
-                const size = isMenuCursor ? 50 : 36;
-                renderCtx.shadowBlur = isMenuCursor ? 42 : 16;
+                const size = 36;
+                renderCtx.shadowBlur = 16;
                 renderCtx.shadowColor = '#ffffff';
-                renderCtx.globalAlpha = isMenuCursor ? 1 : 0.94;
+                renderCtx.globalAlpha = 0.96;
                 renderCtx.drawImage(customCursorImg, cursorX - size / 2, cursorY - size / 2, size, size);
 
-                const haloSize = isMenuCursor ? 30 : 26;
                 renderCtx.beginPath();
-                renderCtx.arc(cursorX, cursorY, haloSize, 0, Math.PI * 2);
-                renderCtx.lineWidth = isMenuCursor ? 3 : 2.2;
+                renderCtx.arc(cursorX, cursorY, 26, 0, Math.PI * 2);
+                renderCtx.lineWidth = 2.2;
                 renderCtx.strokeStyle = '#ffffff';
-                renderCtx.globalAlpha = isMenuCursor ? 0.9 : 0.65;
+                renderCtx.globalAlpha = 0.68;
                 renderCtx.stroke();
             } else {
                 let currentGlowColor = '#ffffff';
@@ -1178,39 +1178,27 @@
                     currentGlowColor = getThemeSpecs(activeThemeKey).glow;
                 }
 
-                const coreRadius = isMenuCursor ? 8 : 7;
-                const ringRadius = isMenuCursor ? 19 : 13;
-
                 renderCtx.beginPath();
-                renderCtx.arc(cursorX, cursorY, coreRadius, 0, Math.PI * 2);
+                renderCtx.arc(cursorX, cursorY, 7, 0, Math.PI * 2);
                 renderCtx.fillStyle = '#ffffff';
-                renderCtx.shadowBlur = isMenuCursor ? 44 : 15;
+                renderCtx.shadowBlur = 15;
                 renderCtx.shadowColor = currentGlowColor;
                 renderCtx.globalAlpha = 1;
                 renderCtx.fill();
 
                 renderCtx.beginPath();
-                renderCtx.arc(cursorX, cursorY, ringRadius, 0, Math.PI * 2);
-                renderCtx.lineWidth = isMenuCursor ? 3.5 : 2;
+                renderCtx.arc(cursorX, cursorY, 13, 0, Math.PI * 2);
+                renderCtx.lineWidth = 2;
                 renderCtx.strokeStyle = currentGlowColor;
                 renderCtx.globalAlpha = 0.95;
                 renderCtx.stroke();
-
-                if (isMenuCursor) {
-                    renderCtx.beginPath();
-                    renderCtx.arc(cursorX, cursorY, 30, 0, Math.PI * 2);
-                    renderCtx.lineWidth = 2;
-                    renderCtx.strokeStyle = currentGlowColor;
-                    renderCtx.globalAlpha = 0.58;
-                    renderCtx.stroke();
-                }
             }
 
             renderCtx.restore();
         }
 
         function syncMenuCustomCursor() {
-            setMenuCursorModeEnabled(!gameActive && !isGameOver && !isVictory && activeThemeKey === 'custom' && customCursorLoaded);
+            setMenuCursorModeEnabled(!gameActive && !isGameOver && !isVictory);
         }
 
         function renderLeaderboard(data) {
@@ -1889,17 +1877,27 @@
             }
         }
 
-        function handleGameClick() {
+        function handleGameClick(event) {
             if (!gameActive || isGameOver || isVictory) return;
+            if (!event) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const clickX = event.clientX - rect.left;
+            const clickY = event.clientY - rect.top;
+
             let hit = false;
             for (let i = circles.length - 1; i >= 0; i--) {
-                if (circles[i].checkClick(mouseX, mouseY)) { circles.splice(i, 1); hit = true; break; }
+                if (circles[i].checkClick(clickX, clickY, currentKey)) {
+                    circles.splice(i, 1);
+                    hit = true;
+                    break;
+                }
             }
+
             if (!hit && circles.length > 0) triggerMiss();
         }
 
-        canvas.addEventListener('mousedown', handleGameClick);
-        canvas.addEventListener('pointerdown', handleGameClick);
+        canvas.addEventListener('pointerdown', handleGameClick, { passive: true });
 
         function triggerMiss() {
             combo = 0;
