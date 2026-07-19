@@ -38,40 +38,21 @@
             touch-action: none;
         }
 
+        #menu-cursor-canvas {
+            position: fixed;
+            inset: 0;
+            z-index: 30;
+            pointer-events: none;
+            display: none;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #menu.custom-cursor-mode, #menu.custom-cursor-mode * {
+            cursor: none !important;
+        }
+
         /* Menu Główne - Nowy Układ Asymetryczny */
-        
-#menu, #menu * {
-    cursor: none !important;
-}
-
-#menu-custom-cursor {
-    position: fixed;
-    left: 0;
-    top: 0;
-    width: 56px;
-    height: 56px;
-    z-index: 99999;
-    pointer-events: none;
-    display: none;
-    transform: translate3d(-200px, -200px, 0);
-    background-repeat: no-repeat;
-    background-position: center center;
-    background-size: contain;
-    filter: brightness(1.45) drop-shadow(0 0 10px rgba(255,255,255,0.95)) drop-shadow(0 0 22px rgba(0,255,255,0.45));
-    mix-blend-mode: screen;
-    will-change: transform, opacity;
-}
-
-#menu-custom-cursor::after {
-    content: '';
-    position: absolute;
-    inset: -10px;
-    border: 2px solid rgba(255,255,255,0.55);
-    border-radius: 999px;
-    box-shadow: 0 0 18px rgba(255,255,255,0.25);
-    opacity: 0.75;
-}
-
         #menu {
             position: absolute;
             top: 0;
@@ -889,7 +870,7 @@
 <body>
 
     <canvas id="game-canvas"></canvas>
-    <div id="menu-custom-cursor" aria-hidden="true"></div>
+    <canvas id="menu-cursor-canvas" aria-hidden="true"></canvas>
 
     <div id="auth-overlay">
         <div class="auth-card">
@@ -1096,6 +1077,8 @@
         const bgVideo = document.getElementById('bg-video');
         const canvas = document.getElementById('game-canvas');
         const ctx = canvas.getContext('2d');
+        const menuCursorCanvas = document.getElementById('menu-cursor-canvas');
+        const menuCursorCtx = menuCursorCanvas.getContext('2d');
         const scoreEl = document.getElementById('score');
         const comboEl = document.getElementById('combo');
         const chorusBadge = document.getElementById('chorus-badge');
@@ -1125,7 +1108,6 @@
         const authError = document.getElementById('auth-error');
         const onlineCounter = document.getElementById('online-counter');
         const leaderboardList = document.getElementById('leaderboard-dom-list');
-        const menuCustomCursor = document.getElementById('menu-custom-cursor');
 
         let socket = null;
         let myUsername = "";
@@ -1154,16 +1136,81 @@
         }
         updateGlobalAudioVolumes();
 
-        function syncMenuCustomCursor() {
-            if (!menuCustomCursor) return;
-            const shouldShow = !gameActive && !isGameOver && !isVictory && activeThemeKey === 'custom' && customCursorLoaded;
-            menuCustomCursor.style.display = shouldShow ? 'block' : 'none';
-            if (!shouldShow) return;
+        function setMenuCursorModeEnabled(enabled) {
+            if (!menuCursorCanvas) return;
+            menu.classList.toggle('custom-cursor-mode', !!enabled);
+            menuCursorCanvas.style.display = enabled ? 'block' : 'none';
+            if (!enabled) {
+                menuCursorCtx.clearRect(0, 0, menuCursorCanvas.width, menuCursorCanvas.height);
+            }
+        }
 
-            const x = Math.round(mouseClientX - 28);
-            const y = Math.round(mouseClientY - 28);
-            menuCustomCursor.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-            menuCustomCursor.style.backgroundImage = `url("${customCursorImg.src}")`;
+        function drawCursorOnContext(renderCtx, isMenuCursor = false, clearCanvas = false) {
+            if (!renderCtx) return;
+            if (clearCanvas) {
+                renderCtx.clearRect(0, 0, renderCtx.canvas.width, renderCtx.canvas.height);
+            }
+            renderCtx.save();
+
+            const cursorX = mouseX;
+            const cursorY = mouseY;
+            const customMode = activeThemeKey === 'custom' && customCursorLoaded;
+
+            if (customMode) {
+                const size = isMenuCursor ? 50 : 36;
+                renderCtx.shadowBlur = isMenuCursor ? 42 : 16;
+                renderCtx.shadowColor = '#ffffff';
+                renderCtx.globalAlpha = isMenuCursor ? 1 : 0.94;
+                renderCtx.drawImage(customCursorImg, cursorX - size / 2, cursorY - size / 2, size, size);
+
+                const haloSize = isMenuCursor ? 30 : 26;
+                renderCtx.beginPath();
+                renderCtx.arc(cursorX, cursorY, haloSize, 0, Math.PI * 2);
+                renderCtx.lineWidth = isMenuCursor ? 3 : 2.2;
+                renderCtx.strokeStyle = '#ffffff';
+                renderCtx.globalAlpha = isMenuCursor ? 0.9 : 0.65;
+                renderCtx.stroke();
+            } else {
+                let currentGlowColor = '#ffffff';
+                if (activeThemeKey === 'rainbow') {
+                    currentGlowColor = `hsl(${(performance.now() / 5) % 360}, 100%, 84%)`;
+                } else {
+                    currentGlowColor = getThemeSpecs(activeThemeKey).glow;
+                }
+
+                const coreRadius = isMenuCursor ? 8 : 7;
+                const ringRadius = isMenuCursor ? 19 : 13;
+
+                renderCtx.beginPath();
+                renderCtx.arc(cursorX, cursorY, coreRadius, 0, Math.PI * 2);
+                renderCtx.fillStyle = '#ffffff';
+                renderCtx.shadowBlur = isMenuCursor ? 44 : 15;
+                renderCtx.shadowColor = currentGlowColor;
+                renderCtx.globalAlpha = 1;
+                renderCtx.fill();
+
+                renderCtx.beginPath();
+                renderCtx.arc(cursorX, cursorY, ringRadius, 0, Math.PI * 2);
+                renderCtx.lineWidth = isMenuCursor ? 3.5 : 2;
+                renderCtx.strokeStyle = currentGlowColor;
+                renderCtx.globalAlpha = 0.95;
+                renderCtx.stroke();
+
+                if (isMenuCursor) {
+                    renderCtx.beginPath();
+                    renderCtx.arc(cursorX, cursorY, 30, 0, Math.PI * 2);
+                    renderCtx.lineWidth = 2;
+                    renderCtx.strokeStyle = currentGlowColor;
+                    renderCtx.globalAlpha = 0.58;
+                    renderCtx.stroke();
+                }
+            }
+
+            renderCtx.restore();
+        }
+
+        function syncMenuCustomCursor() {
+            setMenuCursorModeEnabled(!gameActive && !isGameOver && !isVictory && activeThemeKey === 'custom' && customCursorLoaded);
         }
 
         function renderLeaderboard(data) {
@@ -1324,8 +1371,6 @@
 
         let mouseX = window.innerWidth / 2;
         let mouseY = window.innerHeight / 2;
-        let mouseClientX = window.innerWidth / 2;
-        let mouseClientY = window.innerHeight / 2;
         let particles = [];
         let menuCursorParticles = [];
         let activeThemeKey = themeColorInput.value;
@@ -1338,8 +1383,6 @@
         let customCursorLoaded = false;
         let customCursorImg = new Image();
 
-        syncMenuCustomCursor();
-
         let startTime = 0;
         let lastBeatTime = 0;
         let isChorus = false;
@@ -1350,9 +1393,15 @@
             hard: { maxNumber: 4, baseSpeed: 1.1, cooldown: 340, penalty: 30 }
         };
 
+        syncMenuCustomCursor();
+
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
+            if (menuCursorCanvas) {
+                menuCursorCanvas.width = window.innerWidth;
+                menuCursorCanvas.height = window.innerHeight;
+            }
         }
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
@@ -1360,7 +1409,7 @@
         function setCanvasPointerMode(isInteractive) {
             canvas.style.pointerEvents = isInteractive ? 'auto' : 'none';
         }
-        setCanvasPointerMode(false);
+        setCanvasPointerMode(true);
 
         // Odtwarzanie nowego dźwięku Whoosh ze skrajnego źródła
         function playSwipeSound() {
@@ -1476,7 +1525,6 @@
                     socket.send(JSON.stringify({ type: 'REQUEST_1V1_LOBBIES' }));
                 }
             }
-            syncMenuCustomCursor();
         }
 
         function checkAudioInputs() {
@@ -1548,14 +1596,10 @@
 
         window.addEventListener('mousemove', (e) => {
             const rect = canvas.getBoundingClientRect();
-            mouseClientX = e.clientX;
-            mouseClientY = e.clientY;
             mouseX = e.clientX - rect.left;
             mouseY = e.clientY - rect.top;
 
-            if (!gameActive && !isGameOver && !isVictory) {
-                syncMenuCustomCursor();
-            }
+            syncMenuCustomCursor();
 
             if (gameActive && !isGameOver && !isVictory) {
                 let pColor = '#fff', pShape = 'circle';
@@ -1592,26 +1636,9 @@
             }
         });
 
-        function tryHitCircleAt(mx, my, keyOverride = null) {
-            if (!gameActive || isGameOver || isVictory) return false;
-            let hit = false;
-            for (let i = circles.length - 1; i >= 0; i--) {
-                if (circles[i].checkClick(mx, my, keyOverride)) {
-                    circles.splice(i, 1);
-                    hit = true;
-                    break;
-                }
-            }
-            if (!hit && circles.length > 0) triggerMiss();
-            return hit;
-        }
-
         window.addEventListener('keydown', (e) => {
             if (!gameActive || isGameOver || isVictory) return;
-            if (['1', '2', '3', '4'].includes(e.key)) {
-                currentKey = parseInt(e.key);
-                tryHitCircleAt(mouseX, mouseY, currentKey);
-            }
+            if (['1', '2', '3', '4'].includes(e.key)) currentKey = parseInt(e.key);
         });
         window.addEventListener('keyup', (e) => {
             if (!gameActive || isGameOver || isVictory) return;
@@ -1681,6 +1708,7 @@
             statusMsg.innerText = "";
             menu.style.opacity = 0;
             menu.style.transform = "scale(0.95)";
+            syncMenuCustomCursor();
             setTimeout(() => menu.style.display = 'none', 500);
             gameContainer.style.display = 'block';
 
@@ -1834,11 +1862,10 @@
                 }
                 ctx.restore();
             }
-            checkClick(mx, my, keyOverride = null) {
+            checkClick(mx, my) {
                 if (this.isExpiring) return false;
                 if (Math.hypot(mx - this.x, my - this.y) <= this.targetRadius + 15) {
-                    const keyToUse = Number.isFinite(keyOverride) ? keyOverride : currentKey;
-                    if (keyToUse === this.number) {
+                    if (currentKey === this.number) {
                         let hitAccuracy = Math.abs(this.approachRadius - this.targetRadius);
                         score += hitAccuracy < 20 ? (120 + combo * 10) : 60;
                         combo++; playHitSound();
@@ -1862,14 +1889,17 @@
             }
         }
 
-        window.addEventListener('pointerdown', (e) => {
+        function handleGameClick() {
             if (!gameActive || isGameOver || isVictory) return;
-            if (e.isPrimary === false) return;
-            const rect = canvas.getBoundingClientRect();
-            const px = e.clientX - rect.left;
-            const py = e.clientY - rect.top;
-            tryHitCircleAt(px, py, currentKey);
-        }, { passive: true });
+            let hit = false;
+            for (let i = circles.length - 1; i >= 0; i--) {
+                if (circles[i].checkClick(mouseX, mouseY)) { circles.splice(i, 1); hit = true; break; }
+            }
+            if (!hit && circles.length > 0) triggerMiss();
+        }
+
+        canvas.addEventListener('mousedown', handleGameClick);
+        canvas.addEventListener('pointerdown', handleGameClick);
 
         function triggerMiss() {
             combo = 0;
@@ -1956,12 +1986,10 @@
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active-tab'));
             document.querySelectorAll('.menu-section').forEach(sec => sec.classList.remove('active-section'));
 
-            currentKey = null;
             menu.style.display = 'flex'; 
             setTimeout(() => { menu.style.opacity = 1; menu.style.transform = "scale(1)"; }, 50);
             checkAudioInputs();
             initMenuAmbientCircles();
-            syncMenuCustomCursor();
 
             menuAudio.src = MENU_AUDIO_SRC;
             menuAudio.load();
@@ -2048,48 +2076,16 @@
                     if (particles[i].alpha <= 0) particles.splice(i, 1); else particles[i].draw();
                 }
 
-                // Render Kursora
+                // Render Kursora w grze
                 ctx.save();
-                const isMenuCursor = !gameActive;
-                if (activeThemeKey === 'custom' && customCursorLoaded) {
-                    const size = isMenuCursor ? 48 : 36;
-                    ctx.shadowBlur = isMenuCursor ? 40 : 16;
-                    ctx.shadowColor = '#ffffff';
-                    ctx.globalAlpha = isMenuCursor ? 1 : 0.92;
-                    ctx.drawImage(customCursorImg, mouseX - size/2, mouseY - size/2, size, size);
-                    if (isMenuCursor) {
-                        ctx.beginPath();
-                        ctx.arc(mouseX, mouseY, 26, 0, Math.PI * 2);
-                        ctx.lineWidth = 2.5;
-                        ctx.strokeStyle = '#ffffff';
-                        ctx.globalAlpha = 0.62;
-                        ctx.stroke();
-                    }
-                } else {
-                    let currentGlowColor = '#ffffff';
-                    if (activeThemeKey === 'rainbow') {
-                        currentGlowColor = `hsl(${(performance.now() / 5) % 360}, 100%, 84%)`;
-                    } else {
-                        currentGlowColor = getThemeSpecs(activeThemeKey).glow;
-                    }
-
-                    const coreRadius = isMenuCursor ? 8 : 7;
-                    const ringRadius = isMenuCursor ? 18 : 13;
-                    ctx.beginPath(); ctx.arc(mouseX, mouseY, coreRadius, 0, Math.PI * 2);
-                    ctx.fillStyle = '#ffffff'; ctx.shadowBlur = isMenuCursor ? 40 : 15; ctx.shadowColor = currentGlowColor; ctx.fill();
-
-                    ctx.beginPath(); ctx.arc(mouseX, mouseY, ringRadius, 0, Math.PI * 2);
-                    ctx.lineWidth = isMenuCursor ? 3.5 : 2; ctx.strokeStyle = currentGlowColor; ctx.stroke();
-
-                    if (isMenuCursor) {
-                        ctx.beginPath(); ctx.arc(mouseX, mouseY, 30, 0, Math.PI * 2);
-                        ctx.lineWidth = 2;
-                        ctx.strokeStyle = currentGlowColor;
-                        ctx.globalAlpha = 0.58;
-                        ctx.stroke();
-                    }
-                }
+                drawCursorOnContext(ctx, false, false);
                 ctx.restore();
+
+                // Render kursora w menu na wierzchu interfejsu
+                if (!gameActive && !isGameOver && !isVictory && menuCursorCanvas && menuCursorCanvas.style.display !== 'none') {
+                    drawCursorOnContext(menuCursorCtx, true, true);
+                }
+
                 requestAnimationFrame(loop);
             }
             requestAnimationFrame(loop);
@@ -2458,6 +2454,7 @@
                 clearDuelLocalState();
                 setDuelStatus('');
                 menu.classList.remove('duel-mode');
+                syncMenuCustomCursor();
                 if (typeof goToMenu === 'function') {
                     goToMenu();
                 }

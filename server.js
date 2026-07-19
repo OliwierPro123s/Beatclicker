@@ -8,29 +8,32 @@ const { randomUUID } = require('crypto');
 const port = process.env.PORT || 8080;
 const publicIndex = path.join(__dirname, 'index.html');
 
-const dataDirCandidates = [
-    process.env.BEATCLICKER_DATA_DIR,
-    process.env.RENDER_DISK_MOUNT_PATH,
-    process.env.RENDER_VOLUME_PATH,
-    process.env.DATA_DIR,
-    path.join(__dirname, '.data')
-].filter(Boolean);
+function resolveWritableDataDir() {
+    const candidates = [
+        process.env.BEATCLICKER_DATA_DIR,
+        process.env.DATA_DIR,
+        process.env.RENDER_DISK_MOUNT_PATH,
+        '/var/data',
+        '/data',
+        path.join(__dirname, '.data')
+    ].filter(Boolean);
 
-function pickWritableDataDir() {
-    for (const candidate of dataDirCandidates) {
+    for (const candidate of candidates) {
         try {
             fs.mkdirSync(candidate, { recursive: true });
-            fs.accessSync(candidate, fs.constants.W_OK);
+            const probe = path.join(candidate, '.write-test');
+            fs.writeFileSync(probe, 'ok', 'utf8');
+            fs.unlinkSync(probe);
             return candidate;
-        } catch {}
+        } catch (_) {
+            // try next
+        }
     }
 
-    const fallback = path.join(__dirname, '.data');
-    fs.mkdirSync(fallback, { recursive: true });
-    return fallback;
+    return path.join(__dirname, '.data');
 }
 
-const dataDir = pickWritableDataDir();
+const dataDir = resolveWritableDataDir();
 const usersDbPath = path.join(dataDir, 'users_db.json');
 
 const server = http.createServer((req, res) => {
@@ -117,12 +120,8 @@ function saveUsers() {
     try {
         ensureDataDir();
         const tmpPath = usersDbPath + '.tmp';
-        const payload = JSON.stringify(users, null, 2);
-        fs.writeFileSync(tmpPath, payload, 'utf8');
+        fs.writeFileSync(tmpPath, JSON.stringify(users, null, 2), 'utf8');
         fs.renameSync(tmpPath, usersDbPath);
-
-        const backupPath = path.join(dataDir, 'users_db.backup.json');
-        fs.writeFileSync(backupPath, payload, 'utf8');
     } catch (err) {
         console.error('Nie udało się zapisać users_db.json:', err.message);
     }
