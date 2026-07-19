@@ -1001,7 +1001,7 @@
                 </div>
 
                 <div class="menu-back-row">
-                    <button class="duel-action-btn secondary menu-back-btn" onclick="backToMainMenuFromDuel()">Powrót do menu głównego</button>
+                    <button type="button" class="duel-action-btn secondary menu-back-btn" onclick="playMenuClickSound(); backToMainMenuFromDuel(); return false;">Powrót do menu głównego</button>
                 </div>
             </div>
         </div>
@@ -1509,19 +1509,19 @@
                 for(let i=0; i<2; i++) particles.push(new Particle(mouseX, mouseY, pColor, pShape));
             } else if (!isGameOver && !isVictory) {
                 const menuColor = activeThemeKey === 'rainbow'
-                    ? `hsl(${(performance.now() / 6) % 360}, 100%, 70%)`
+                    ? `hsl(${(performance.now() / 6) % 360}, 100%, 84%)`
                     : (getThemeSpecs(activeThemeKey)?.glow || '#00ffff');
-                for (let i = 0; i < 3; i++) {
+                for (let i = 0; i < 4; i++) {
                     const trail = new Particle(
-                        mouseX + (Math.random() * 10 - 5),
-                        mouseY + (Math.random() * 10 - 5),
+                        mouseX + (Math.random() * 8 - 4),
+                        mouseY + (Math.random() * 8 - 4),
                         menuColor,
                         'circle'
                     );
-                    trail.size = Math.random() * 4 + 1.8;
-                    trail.speedX *= 0.2;
-                    trail.speedY *= 0.2;
-                    trail.decay = Math.random() * 0.012 + 0.018;
+                    trail.size = Math.random() * 3.4 + 1.6;
+                    trail.speedX *= 0.18;
+                    trail.speedY *= 0.18;
+                    trail.decay = Math.random() * 0.009 + 0.014;
                     menuCursorParticles.push(trail);
                 }
                 if (menuCursorParticles.length > 180) {
@@ -1971,22 +1971,22 @@
                 const isMenuCursor = !gameActive;
                 if (activeThemeKey === 'custom' && customCursorLoaded) {
                     const size = isMenuCursor ? 48 : 36;
-                    ctx.shadowBlur = isMenuCursor ? 28 : 16;
+                    ctx.shadowBlur = isMenuCursor ? 40 : 16;
                     ctx.shadowColor = '#ffffff';
-                    ctx.globalAlpha = isMenuCursor ? 0.98 : 0.92;
+                    ctx.globalAlpha = isMenuCursor ? 1 : 0.92;
                     ctx.drawImage(customCursorImg, mouseX - size/2, mouseY - size/2, size, size);
                     if (isMenuCursor) {
                         ctx.beginPath();
                         ctx.arc(mouseX, mouseY, 26, 0, Math.PI * 2);
-                        ctx.lineWidth = 2;
+                        ctx.lineWidth = 2.5;
                         ctx.strokeStyle = '#ffffff';
-                        ctx.globalAlpha = 0.45;
+                        ctx.globalAlpha = 0.62;
                         ctx.stroke();
                     }
                 } else {
                     let currentGlowColor = '#ffffff';
                     if (activeThemeKey === 'rainbow') {
-                        currentGlowColor = `hsl(${(performance.now() / 5) % 360}, 100%, 65%)`;
+                        currentGlowColor = `hsl(${(performance.now() / 5) % 360}, 100%, 84%)`;
                     } else {
                         currentGlowColor = getThemeSpecs(activeThemeKey).glow;
                     }
@@ -1994,16 +1994,16 @@
                     const coreRadius = isMenuCursor ? 8 : 7;
                     const ringRadius = isMenuCursor ? 18 : 13;
                     ctx.beginPath(); ctx.arc(mouseX, mouseY, coreRadius, 0, Math.PI * 2);
-                    ctx.fillStyle = '#ffffff'; ctx.shadowBlur = isMenuCursor ? 26 : 15; ctx.shadowColor = currentGlowColor; ctx.fill();
+                    ctx.fillStyle = '#ffffff'; ctx.shadowBlur = isMenuCursor ? 40 : 15; ctx.shadowColor = currentGlowColor; ctx.fill();
 
                     ctx.beginPath(); ctx.arc(mouseX, mouseY, ringRadius, 0, Math.PI * 2);
-                    ctx.lineWidth = isMenuCursor ? 3 : 2; ctx.strokeStyle = currentGlowColor; ctx.stroke();
+                    ctx.lineWidth = isMenuCursor ? 3.5 : 2; ctx.strokeStyle = currentGlowColor; ctx.stroke();
 
                     if (isMenuCursor) {
                         ctx.beginPath(); ctx.arc(mouseX, mouseY, 30, 0, Math.PI * 2);
-                        ctx.lineWidth = 1.5;
+                        ctx.lineWidth = 2;
                         ctx.strokeStyle = currentGlowColor;
-                        ctx.globalAlpha = 0.35;
+                        ctx.globalAlpha = 0.58;
                         ctx.stroke();
                     }
                 }
@@ -2369,6 +2369,18 @@
                 duelUrlInput.disabled = false;
             }
 
+            window.backToMainMenuFromDuel = function () {
+                if (duelLobbyId && !duelResultSent) {
+                    sendLobbyLeave();
+                }
+                clearDuelLocalState();
+                setDuelStatus('');
+                menu.classList.remove('duel-mode');
+                if (typeof goToMenu === 'function') {
+                    goToMenu();
+                }
+            };
+
             function startDuelGameSession(config) {
                 if (!config || !config.trackUrl) {
                     setDuelStatus('Brak danych do uruchomienia 1VS1.', true);
@@ -2506,7 +2518,10 @@
                     sendLobbyLeave();
                 }
                 clearDuelLocalState();
-                return originalGoToMenu.apply(this, arguments);
+                if (typeof originalGoToMenu === 'function') {
+                    return originalGoToMenu.apply(this, arguments);
+                }
+                return undefined;
             };
 
             const originalSwitchTab = window.switchTab;
