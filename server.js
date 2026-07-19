@@ -8,11 +8,29 @@ const { randomUUID } = require('crypto');
 const port = process.env.PORT || 8080;
 const publicIndex = path.join(__dirname, 'index.html');
 
-const dataDir = process.env.BEATCLICKER_DATA_DIR
-    || process.env.DATA_DIR
-    || process.env.RENDER_DISK_MOUNT_PATH
-    || path.join(__dirname, '.data');
+const dataDirCandidates = [
+    process.env.BEATCLICKER_DATA_DIR,
+    process.env.RENDER_DISK_MOUNT_PATH,
+    process.env.RENDER_VOLUME_PATH,
+    process.env.DATA_DIR,
+    path.join(__dirname, '.data')
+].filter(Boolean);
 
+function pickWritableDataDir() {
+    for (const candidate of dataDirCandidates) {
+        try {
+            fs.mkdirSync(candidate, { recursive: true });
+            fs.accessSync(candidate, fs.constants.W_OK);
+            return candidate;
+        } catch {}
+    }
+
+    const fallback = path.join(__dirname, '.data');
+    fs.mkdirSync(fallback, { recursive: true });
+    return fallback;
+}
+
+const dataDir = pickWritableDataDir();
 const usersDbPath = path.join(dataDir, 'users_db.json');
 
 const server = http.createServer((req, res) => {
@@ -52,6 +70,7 @@ let onlineCount = 0;
 let duelLobbies = new Map();
 
 console.log(`Serwer BeatClicker działa na porcie ${port}`);
+console.log(`Katalog danych: ${dataDir}`);
 
 function ensureDataDir() {
     try {
@@ -98,8 +117,12 @@ function saveUsers() {
     try {
         ensureDataDir();
         const tmpPath = usersDbPath + '.tmp';
-        fs.writeFileSync(tmpPath, JSON.stringify(users, null, 2), 'utf8');
+        const payload = JSON.stringify(users, null, 2);
+        fs.writeFileSync(tmpPath, payload, 'utf8');
         fs.renameSync(tmpPath, usersDbPath);
+
+        const backupPath = path.join(dataDir, 'users_db.backup.json');
+        fs.writeFileSync(backupPath, payload, 'utf8');
     } catch (err) {
         console.error('Nie udało się zapisać users_db.json:', err.message);
     }

@@ -34,10 +34,44 @@
             height: 100%;
             z-index: 2;
             cursor: none;
-            pointer-events: none;
+            pointer-events: auto;
+            touch-action: none;
         }
 
         /* Menu Główne - Nowy Układ Asymetryczny */
+        
+#menu, #menu * {
+    cursor: none !important;
+}
+
+#menu-custom-cursor {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 56px;
+    height: 56px;
+    z-index: 99999;
+    pointer-events: none;
+    display: none;
+    transform: translate3d(-200px, -200px, 0);
+    background-repeat: no-repeat;
+    background-position: center center;
+    background-size: contain;
+    filter: brightness(1.45) drop-shadow(0 0 10px rgba(255,255,255,0.95)) drop-shadow(0 0 22px rgba(0,255,255,0.45));
+    mix-blend-mode: screen;
+    will-change: transform, opacity;
+}
+
+#menu-custom-cursor::after {
+    content: '';
+    position: absolute;
+    inset: -10px;
+    border: 2px solid rgba(255,255,255,0.55);
+    border-radius: 999px;
+    box-shadow: 0 0 18px rgba(255,255,255,0.25);
+    opacity: 0.75;
+}
+
         #menu {
             position: absolute;
             top: 0;
@@ -855,6 +889,7 @@
 <body>
 
     <canvas id="game-canvas"></canvas>
+    <div id="menu-custom-cursor" aria-hidden="true"></div>
 
     <div id="auth-overlay">
         <div class="auth-card">
@@ -1090,6 +1125,7 @@
         const authError = document.getElementById('auth-error');
         const onlineCounter = document.getElementById('online-counter');
         const leaderboardList = document.getElementById('leaderboard-dom-list');
+        const menuCustomCursor = document.getElementById('menu-custom-cursor');
 
         let socket = null;
         let myUsername = "";
@@ -1117,6 +1153,18 @@
             swipeAudio.volume = currentSfxVol; // Sterowanie nowym dźwiękiem z menu
         }
         updateGlobalAudioVolumes();
+
+        function syncMenuCustomCursor() {
+            if (!menuCustomCursor) return;
+            const shouldShow = !gameActive && !isGameOver && !isVictory && activeThemeKey === 'custom' && customCursorLoaded;
+            menuCustomCursor.style.display = shouldShow ? 'block' : 'none';
+            if (!shouldShow) return;
+
+            const x = Math.round(mouseClientX - 28);
+            const y = Math.round(mouseClientY - 28);
+            menuCustomCursor.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+            menuCustomCursor.style.backgroundImage = `url("${customCursorImg.src}")`;
+        }
 
         function renderLeaderboard(data) {
             leaderboardList.innerHTML = "";
@@ -1276,6 +1324,8 @@
 
         let mouseX = window.innerWidth / 2;
         let mouseY = window.innerHeight / 2;
+        let mouseClientX = window.innerWidth / 2;
+        let mouseClientY = window.innerHeight / 2;
         let particles = [];
         let menuCursorParticles = [];
         let activeThemeKey = themeColorInput.value;
@@ -1287,6 +1337,8 @@
         let menuAmbientCircles = [];
         let customCursorLoaded = false;
         let customCursorImg = new Image();
+
+        syncMenuCustomCursor();
 
         let startTime = 0;
         let lastBeatTime = 0;
@@ -1396,6 +1448,7 @@
                 buttons.forEach(b => b.classList.remove('active-tab'));
                 document.querySelectorAll('.menu-section').forEach(sec => sec.classList.remove('active-section'));
                 menu.classList.remove('duel-mode');
+                syncMenuCustomCursor();
                 return;
             }
 
@@ -1423,6 +1476,7 @@
                     socket.send(JSON.stringify({ type: 'REQUEST_1V1_LOBBIES' }));
                 }
             }
+            syncMenuCustomCursor();
         }
 
         function checkAudioInputs() {
@@ -1469,6 +1523,7 @@
         themeColorInput.addEventListener('change', () => {
             localStorage.setItem('beatclicker_theme_key', themeColorInput.value);
             activeThemeKey = themeColorInput.value;
+            syncMenuCustomCursor();
         });
 
         window.addEventListener('click', () => {
@@ -1487,13 +1542,20 @@
                 activeThemeKey = 'custom';
                 localStorage.setItem('beatclicker_theme_key', 'custom');
                 playMenuClickSound();
+                syncMenuCustomCursor();
             };
         });
 
         window.addEventListener('mousemove', (e) => {
             const rect = canvas.getBoundingClientRect();
+            mouseClientX = e.clientX;
+            mouseClientY = e.clientY;
             mouseX = e.clientX - rect.left;
             mouseY = e.clientY - rect.top;
+
+            if (!gameActive && !isGameOver && !isVictory) {
+                syncMenuCustomCursor();
+            }
 
             if (gameActive && !isGameOver && !isVictory) {
                 let pColor = '#fff', pShape = 'circle';
@@ -1530,9 +1592,26 @@
             }
         });
 
+        function tryHitCircleAt(mx, my, keyOverride = null) {
+            if (!gameActive || isGameOver || isVictory) return false;
+            let hit = false;
+            for (let i = circles.length - 1; i >= 0; i--) {
+                if (circles[i].checkClick(mx, my, keyOverride)) {
+                    circles.splice(i, 1);
+                    hit = true;
+                    break;
+                }
+            }
+            if (!hit && circles.length > 0) triggerMiss();
+            return hit;
+        }
+
         window.addEventListener('keydown', (e) => {
             if (!gameActive || isGameOver || isVictory) return;
-            if (['1', '2', '3', '4'].includes(e.key)) currentKey = parseInt(e.key);
+            if (['1', '2', '3', '4'].includes(e.key)) {
+                currentKey = parseInt(e.key);
+                tryHitCircleAt(mouseX, mouseY, currentKey);
+            }
         });
         window.addEventListener('keyup', (e) => {
             if (!gameActive || isGameOver || isVictory) return;
@@ -1755,10 +1834,11 @@
                 }
                 ctx.restore();
             }
-            checkClick(mx, my) {
+            checkClick(mx, my, keyOverride = null) {
                 if (this.isExpiring) return false;
                 if (Math.hypot(mx - this.x, my - this.y) <= this.targetRadius + 15) {
-                    if (currentKey === this.number) {
+                    const keyToUse = Number.isFinite(keyOverride) ? keyOverride : currentKey;
+                    if (keyToUse === this.number) {
                         let hitAccuracy = Math.abs(this.approachRadius - this.targetRadius);
                         score += hitAccuracy < 20 ? (120 + combo * 10) : 60;
                         combo++; playHitSound();
@@ -1782,14 +1862,14 @@
             }
         }
 
-        canvas.addEventListener('mousedown', () => {
+        window.addEventListener('pointerdown', (e) => {
             if (!gameActive || isGameOver || isVictory) return;
-            let hit = false;
-            for (let i = circles.length - 1; i >= 0; i--) {
-                if (circles[i].checkClick(mouseX, mouseY)) { circles.splice(i, 1); hit = true; break; }
-            }
-            if (!hit && circles.length > 0) triggerMiss();
-        });
+            if (e.isPrimary === false) return;
+            const rect = canvas.getBoundingClientRect();
+            const px = e.clientX - rect.left;
+            const py = e.clientY - rect.top;
+            tryHitCircleAt(px, py, currentKey);
+        }, { passive: true });
 
         function triggerMiss() {
             combo = 0;
@@ -1876,10 +1956,12 @@
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active-tab'));
             document.querySelectorAll('.menu-section').forEach(sec => sec.classList.remove('active-section'));
 
+            currentKey = null;
             menu.style.display = 'flex'; 
             setTimeout(() => { menu.style.opacity = 1; menu.style.transform = "scale(1)"; }, 50);
             checkAudioInputs();
             initMenuAmbientCircles();
+            syncMenuCustomCursor();
 
             menuAudio.src = MENU_AUDIO_SRC;
             menuAudio.load();
