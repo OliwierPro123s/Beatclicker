@@ -7,7 +7,13 @@ const { randomUUID } = require('crypto');
 
 const port = process.env.PORT || 8080;
 const publicIndex = path.join(__dirname, 'index.html');
-const usersDbPath = path.join(__dirname, 'users_db.json');
+
+const dataDir = process.env.BEATCLICKER_DATA_DIR
+    || process.env.DATA_DIR
+    || process.env.RENDER_DISK_MOUNT_PATH
+    || path.join(__dirname, '.data');
+
+const usersDbPath = path.join(dataDir, 'users_db.json');
 
 const server = http.createServer((req, res) => {
     try {
@@ -47,8 +53,17 @@ let duelLobbies = new Map();
 
 console.log(`Serwer BeatClicker działa na porcie ${port}`);
 
+function ensureDataDir() {
+    try {
+        fs.mkdirSync(dataDir, { recursive: true });
+    } catch (err) {
+        console.error('Nie udało się utworzyć katalogu danych:', err.message);
+    }
+}
+
 function loadUsers() {
     try {
+        ensureDataDir();
         if (!fs.existsSync(usersDbPath)) {
             users = Object.create(null);
             return;
@@ -81,6 +96,7 @@ function loadUsers() {
 
 function saveUsers() {
     try {
+        ensureDataDir();
         const tmpPath = usersDbPath + '.tmp';
         fs.writeFileSync(tmpPath, JSON.stringify(users, null, 2), 'utf8');
         fs.renameSync(tmpPath, usersDbPath);
@@ -584,6 +600,20 @@ const interval = setInterval(() => {
 
 wss.on('close', () => {
     clearInterval(interval);
+});
+
+setInterval(() => {
+    saveUsers();
+}, 60_000).unref();
+
+process.on('SIGTERM', () => {
+    saveUsers();
+    process.exit(0);
+});
+
+process.on('SIGINT', () => {
+    saveUsers();
+    process.exit(0);
 });
 
 server.listen(port, '0.0.0.0', () => {
