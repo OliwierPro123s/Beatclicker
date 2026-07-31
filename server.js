@@ -1,643 +1,472 @@
-
+const express = require('express');
 const http = require('http');
-const fs = require('fs');
 const path = require('path');
-const { WebSocketServer, WebSocket } = require('ws');
-const { randomUUID } = require('crypto');
+const WebSocket = require('ws');
 
-const port = process.env.PORT || 8080;
-const publicIndex = path.join(__dirname, 'index.html');
+const PORT = process.env.PORT || 3000;
+const TICK_RATE = 20;
+const STATE_BROADCAST_RATE = 10;
+const PLAYER_RADIUS = 0.62;
+const MAP_HALF = 28;
+const CATCH_BASE_RADIUS = 1.55;
+const SAFE_HIDE_MS = 30_000;
+const BLIND_MS = 30_000;
 
-function resolveWritableDataDir() {
-    const candidates = [
-        process.env.BEATCLICKER_DATA_DIR,
-        process.env.DATA_DIR,
-        process.env.RENDER_DISK_MOUNT_PATH,
-        '/var/data',
-        '/data',
-        path.join(__dirname, '.data')
-    ].filter(Boolean);
+const app = express();
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
-    for (const candidate of candidates) {
-        try {
-            fs.mkdirSync(candidate, { recursive: true });
-            const probe = path.join(candidate, '.write-test');
-            fs.writeFileSync(probe, 'ok', 'utf8');
-            fs.unlinkSync(probe);
-            return candidate;
-        } catch (_) {
-            // try next
-        }
-    }
+app.use(express.static(__dirname));
+app.get('/health', (_req, res) => res.json({ ok: true }));
 
-    return path.join(__dirname, '.data');
+const SEEKER_ROLES = [
+  { name: 'Tracker', desc: 'Większy zasięg wykrywania i stabilny pościg.', speed: 5.15, vision: 34, catchBonus: 0.55, color: '#ff6b6b' },
+  { name: 'Radar', desc: 'Najlepiej widzi cel w średnim dystansie.', speed: 4.95, vision: 38, catchBonus: 0.35, color: '#ff9f43' },
+  { name: 'Hunter', desc: 'Najszybszy start i agresywny pościg.', speed: 5.75, vision: 28, catchBonus: 0.25, color: '#ff4d4d' },
+  { name: 'Sentinel', desc: 'Stabilny łowca z dobrym balansem prędkości.', speed: 5.05, vision: 32, catchBonus: 0.40, color: '#ff7f50' },
+  { name: 'Warden', desc: 'Większy zasięg łapania i mocny nacisk.', speed: 4.90, vision: 36, catchBonus: 0.60, color: '#e74c3c' },
+  { name: 'Echo', desc: 'Dobrze trzyma tempo podczas długiego pościgu.', speed: 5.45, vision: 30, catchBonus: 0.30, color: '#ff8c69' },
+  { name: 'Analyst', desc: 'Bardzo dobry do wyłapywania ruchu na dystans.', speed: 5.20, vision: 35, catchBonus: 0.35, color: '#ffb347' },
+  { name: 'Snare Master', desc: 'Nacisk na kontrolę i zamykanie przestrzeni.', speed: 4.80, vision: 31, catchBonus: 0.50, color: '#f97316' },
+  { name: 'Night Watch', desc: 'Najlepszy wzrok w ciemniejszych fragmentach mapy.', speed: 5.10, vision: 40, catchBonus: 0.25, color: '#fb7185' },
+  { name: 'Pursuer', desc: 'Najbardziej zwinny w gonitwie na prostej.', speed: 5.90, vision: 27, catchBonus: 0.25, color: '#ff5252' },
+  { name: 'Pathfinder', desc: 'Płynny ruch i dobre ustawianie się na skrzydłach.', speed: 5.35, vision: 32, catchBonus: 0.35, color: '#f87171' },
+  { name: 'Stalker', desc: 'Silny w cichym, stopniowym zawężaniu dystansu.', speed: 5.55, vision: 33, catchBonus: 0.35, color: '#ff7070' },
+];
+
+const HIDER_ROLES = [
+  { name: 'Ghost', desc: 'Cichszy i trudniejszy do zauważenia przy ścianach.', speed: 5.05, vision: 28, stealth: 22, color: '#60a5fa' },
+  { name: 'Sprinter', desc: 'Bardzo szybki i dobry na krótkie przebiegi.', speed: 5.95, vision: 24, stealth: 18, color: '#38bdf8' },
+  { name: 'Blink', desc: 'Najlepszy w gwałtownych ucieczkach i skrętach.', speed: 5.55, vision: 24, stealth: 18, color: '#22c55e' },
+  { name: 'Decoy', desc: 'Świetny w mieszaniu tropów i myleniu pościgu.', speed: 5.15, vision: 25, stealth: 19, color: '#14b8a6' },
+  { name: 'Smoke', desc: 'Lubi chaos i zasłanianie własnej trasy.', speed: 5.00, vision: 26, stealth: 20, color: '#a78bfa' },
+  { name: 'Shade', desc: 'Dobrze znika w bocznych korytarzach.', speed: 5.20, vision: 27, stealth: 22, color: '#818cf8' },
+  { name: 'Acrobat', desc: 'Wygodny przy skokach i dynamicznym ruchu.', speed: 5.30, vision: 24, stealth: 20, color: '#2dd4bf' },
+  { name: 'Burrower', desc: 'Najlepiej czuje się przy przeszkodach i zakrętach.', speed: 5.10, vision: 26, stealth: 21, color: '#34d399' },
+  { name: 'Mimic', desc: 'Świetny, gdy trzeba zlać się z otoczeniem.', speed: 5.00, vision: 28, stealth: 23, color: '#67e8f9' },
+  { name: 'Runner', desc: 'Najdłużej utrzymuje tempo w otwartym terenie.', speed: 5.80, vision: 24, stealth: 18, color: '#4ade80' },
+  { name: 'Quietfoot', desc: 'Najsłabszy ślad i bardzo mały zasięg zdrady.', speed: 4.95, vision: 29, stealth: 25, color: '#93c5fd' },
+  { name: 'Vanisher', desc: 'Idealny do szybkiego znikania po zmianie roli.', speed: 5.25, vision: 24, stealth: 16, color: '#f472b6' },
+];
+
+const ALL_ROLES = { seekers: SEEKER_ROLES, hiders: HIDER_ROLES };
+
+const obstacleDefs = [
+  { x: -17, z: -11, w: 4, d: 4, h: 2.8, kind: 'crate' },
+  { x: -10, z: -16, w: 5, d: 3, h: 2.5, kind: 'crate' },
+  { x: -2, z: -10, w: 4, d: 5, h: 3.2, kind: 'tree' },
+  { x: 6, z: -14, w: 5, d: 5, h: 2.7, kind: 'crate' },
+  { x: 14, z: -9, w: 4, d: 4, h: 2.8, kind: 'tree' },
+  { x: 17, z: 4, w: 4, d: 4, h: 3.2, kind: 'crate' },
+  { x: 9, z: 12, w: 6, d: 3, h: 2.5, kind: 'crate' },
+  { x: -1, z: 16, w: 5, d: 5, h: 2.8, kind: 'tree' },
+  { x: -12, z: 13, w: 4, d: 4, h: 2.2, kind: 'crate' },
+  { x: -18, z: 3, w: 5, d: 5, h: 3.4, kind: 'tree' },
+  { x: -5, z: 1, w: 4, d: 4, h: 2.5, kind: 'crate' },
+  { x: 4, z: 2, w: 4, d: 6, h: 3.0, kind: 'tree' },
+  { x: 12, z: 0, w: 5, d: 4, h: 2.7, kind: 'crate' },
+  { x: -8, z: 7, w: 4, d: 4, h: 2.3, kind: 'crate' },
+  { x: 1, z: -4, w: 4, d: 4, h: 2.9, kind: 'tree' },
+  { x: 21, z: -15, w: 4, d: 4, h: 2.6, kind: 'crate' },
+  { x: -21, z: 15, w: 4, d: 4, h: 2.6, kind: 'crate' },
+  { x: 0, z: 22, w: 8, d: 2, h: 1.6, kind: 'crate' },
+];
+
+function randomId() {
+  return Math.random().toString(36).slice(2, 10);
 }
 
-const dataDir = resolveWritableDataDir();
-const usersDbPath = path.join(dataDir, 'users_db.json');
-
-const server = http.createServer((req, res) => {
-    try {
-        if (req.url === '/' || req.url === '/index.html') {
-            if (!fs.existsSync(publicIndex)) {
-                res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
-                res.end('Brak pliku index.html obok server.js');
-                return;
-            }
-
-            const html = fs.readFileSync(publicIndex, 'utf8');
-            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-            res.end(html);
-            return;
-        }
-
-        if (req.url === '/health') {
-            res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-            res.end('ok');
-            return;
-        }
-
-        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end('Not found');
-    } catch (err) {
-        console.error('Błąd HTTP:', err);
-        res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end('Błąd serwera');
-    }
-});
-
-const wss = new WebSocketServer({ noServer: true });
-
-let users = Object.create(null);
-let onlineCount = 0;
-let duelLobbies = new Map();
-
-console.log(`Serwer BeatClicker działa na porcie ${port}`);
-console.log(`Katalog danych: ${dataDir}`);
-
-function ensureDataDir() {
-    try {
-        fs.mkdirSync(dataDir, { recursive: true });
-    } catch (err) {
-        console.error('Nie udało się utworzyć katalogu danych:', err.message);
-    }
+function clamp(v, min, max) {
+  return Math.max(min, Math.min(max, v));
 }
 
-function loadUsers() {
-    try {
-        ensureDataDir();
-        if (!fs.existsSync(usersDbPath)) {
-            users = Object.create(null);
-            return;
-        }
-
-        const raw = fs.readFileSync(usersDbPath, 'utf8');
-        const parsed = JSON.parse(raw);
-        const nextUsers = Object.create(null);
-
-        if (parsed && typeof parsed === 'object') {
-            for (const [username, user] of Object.entries(parsed)) {
-                const safeUsername = normalizeText(username);
-                if (!safeUsername) continue;
-
-                nextUsers[safeUsername] = {
-                    password: normalizeText(user && user.password) || '',
-                    points: Math.max(0, Math.round(Number(user && user.points) || 0)),
-                    elo: Math.max(0, Math.round(Number(user && user.elo) || 1000))
-                };
-            }
-        }
-
-        users = nextUsers;
-        console.log(`Wczytano użytkowników: ${Object.keys(users).length}`);
-    } catch (err) {
-        console.error('Nie udało się wczytać users_db.json:', err.message);
-        users = Object.create(null);
-    }
+function distance2D(a, b) {
+  const dx = a.x - b.x;
+  const dz = a.z - b.z;
+  return Math.sqrt(dx * dx + dz * dz);
 }
 
-function saveUsers() {
-    try {
-        ensureDataDir();
-        const tmpPath = usersDbPath + '.tmp';
-        fs.writeFileSync(tmpPath, JSON.stringify(users, null, 2), 'utf8');
-        fs.renameSync(tmpPath, usersDbPath);
-    } catch (err) {
-        console.error('Nie udało się zapisać users_db.json:', err.message);
-    }
+function seededShuffle(arr) {
+  const out = arr.slice();
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }
 
-loadUsers();
-
-function normalizeText(value) {
-    return typeof value === 'string' ? value.trim() : '';
+function makeRoleDeck(side) {
+  const source = side === 'seeker' ? SEEKER_ROLES : HIDER_ROLES;
+  return seededShuffle(source.map((r) => r.name));
 }
 
-function safeSend(ws, payload) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(payload));
-    }
+const state = {
+  running: false,
+  startedAt: 0,
+  round: 0,
+  message: 'Czekam na 2 graczy...',
+  roleDecks: {
+    seeker: makeRoleDeck('seeker'),
+    hider: makeRoleDeck('hider'),
+  },
+  players: new Map(),
+  announcements: [],
+  lastBroadcastAt: 0,
+};
+
+function pushAnnouncement(text) {
+  state.announcements.unshift({ text, at: Date.now() });
+  state.announcements = state.announcements.slice(0, 5);
 }
 
-function broadcast(payload) {
-    const msg = JSON.stringify(payload);
-    wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(msg);
-        }
-    });
+function getRoleDefinition(side, roleName) {
+  const list = side === 'seeker' ? SEEKER_ROLES : HIDER_ROLES;
+  return list.find((r) => r.name === roleName) || list[0];
 }
 
-function getTopPlayers() {
-    return Object.keys(users)
-        .map(username => ({
-            username,
-            points: Number(users[username].points) || 0
-        }))
-        .sort((a, b) => b.points - a.points)
-        .slice(0, 10);
+function nextRole(side) {
+  const deck = state.roleDecks[side];
+  if (!deck.length) {
+    state.roleDecks[side] = makeRoleDeck(side);
+  }
+  return state.roleDecks[side].pop();
 }
 
-function broadcastOnlineCount() {
-    broadcast({ type: 'ONLINE_COUNT', count: onlineCount });
+function chooseSpawn(index) {
+  const spots = [
+    { x: -22, z: -22 },
+    { x: 22, z: -22 },
+    { x: -22, z: 22 },
+    { x: 22, z: 22 },
+    { x: 0, z: 0 },
+    { x: -8, z: 20 },
+    { x: 10, z: -20 },
+  ];
+  const s = spots[index % spots.length];
+  return { x: s.x + (Math.random() * 2 - 1), z: s.z + (Math.random() * 2 - 1) };
 }
 
-function broadcastLeaderboard() {
-    broadcast({ type: 'LEADERBOARD', data: getTopPlayers() });
+function getActivePlayers() {
+  return [...state.players.values()].filter((p) => !p.spectator);
 }
 
-function getWaitingLobbies() {
-    return Array.from(duelLobbies.values())
-        .filter(lobby => lobby.status === 'waiting')
-        .sort((a, b) => b.createdAt - a.createdAt)
-        .map(lobby => ({
-            id: lobby.id,
-            host: lobby.host,
-            title: lobby.title,
-            duration: lobby.duration,
-            createdAt: lobby.createdAt
-        }));
+function ensureGameRunning() {
+  const active = getActivePlayers();
+  if (active.length >= 2 && !state.running) {
+    startGame();
+  }
 }
 
-function broadcastDuelLobbies() {
-    broadcast({ type: '1V1_LOBBIES', data: getWaitingLobbies() });
+function resetToLobby(reason = 'Czekam na 2 graczy...') {
+  state.running = false;
+  state.startedAt = 0;
+  state.round = 0;
+  state.message = reason;
+  state.players.forEach((p) => {
+    p.spectator = false;
+    p.side = null;
+    p.roleName = null;
+    p.roleDesc = null;
+    p.speed = 0;
+    p.vision = 0;
+    p.catchBonus = 0;
+    p.stealth = 0;
+    p.blindUntil = 0;
+    p.safeUntil = 0;
+  });
+  pushAnnouncement('Gra wróciła do lobby.');
 }
 
-function sendDuelLobbiesTo(ws) {
-    safeSend(ws, { type: '1V1_LOBBIES', data: getWaitingLobbies() });
+function assignRoleToPlayer(player, side) {
+  const roleName = nextRole(side);
+  const roleDef = getRoleDefinition(side, roleName);
+  player.side = side;
+  player.roleName = roleDef.name;
+  player.roleDesc = roleDef.desc;
+  player.speed = roleDef.speed;
+  player.vision = roleDef.vision;
+  player.catchBonus = roleDef.catchBonus || 0;
+  player.stealth = roleDef.stealth || 0;
 }
 
-function createLobbyId() {
-    try {
-        return `lobby_${randomUUID()}`;
-    } catch {
-        return `lobby_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    }
-}
+function startGame() {
+  const active = getActivePlayers();
+  if (active.length < 2) return;
 
-function getUserElo(username) {
-    if (!users[username]) return 1000;
-    const elo = Number(users[username].elo);
-    return Number.isFinite(elo) ? elo : 1000;
-}
+  state.running = true;
+  state.startedAt = Date.now();
+  state.round += 1;
+  state.message = `Runda ${state.round} rozpoczęta!`;
 
-function setUserElo(username, elo) {
-    if (!users[username]) {
-        users[username] = { password: '', points: 0, elo: 1000 };
-    }
-    users[username].elo = Math.max(0, Math.round(Number(elo) || 0));
-}
-
-function computeDuelDelta(playerElo, opponentElo) {
-    const gap = Math.abs((Number(playerElo) || 1000) - (Number(opponentElo) || 1000));
-    if (gap === 0) return 0;
-    // Im większa różnica ELO, tym mniejsza zmiana.
-    return Math.max(1, 5 - Math.min(4, Math.floor(gap / 200)));
-}
-
-function getLobbyForUsername(username) {
-    return Array.from(duelLobbies.values()).find(lobby =>
-        lobby.host === username || lobby.guest === username
-    ) || null;
-}
-
-function cancelLobby(lobby, reason = 'anulowano') {
-    if (!lobby) return;
-
-    const payload = {
-        type: '1V1_CANCELLED',
-        lobbyId: lobby.id,
-        reason
-    };
-
-    safeSend(lobby.hostWs, payload);
-    safeSend(lobby.guestWs, payload);
-
-    duelLobbies.delete(lobby.id);
-    if (lobby.hostWs && lobby.hostWs.currentLobbyId === lobby.id) lobby.hostWs.currentLobbyId = null;
-    if (lobby.guestWs && lobby.guestWs.currentLobbyId === lobby.id) lobby.guestWs.currentLobbyId = null;
-
-    broadcastDuelLobbies();
-}
-
-function finalizeMatch(lobby) {
-    if (!lobby || lobby.resolved) return;
-    lobby.resolved = true;
-
-    const hostScore = Number(lobby.results.get(lobby.host) ?? 0);
-    const guestScore = Number(lobby.results.get(lobby.guest) ?? 0);
-
-    const hostElo = getUserElo(lobby.host);
-    const guestElo = getUserElo(lobby.guest);
-
-    let hostOutcome = 'draw';
-    let guestOutcome = 'draw';
-    let hostDelta = 0;
-    let guestDelta = 0;
-
-    if (hostScore > guestScore) {
-        hostOutcome = 'win';
-        guestOutcome = 'loss';
-        hostDelta = computeDuelDelta(hostElo, guestElo);
-        guestDelta = -computeDuelDelta(guestElo, hostElo);
-    } else if (guestScore > hostScore) {
-        hostOutcome = 'loss';
-        guestOutcome = 'win';
-        hostDelta = -computeDuelDelta(hostElo, guestElo);
-        guestDelta = computeDuelDelta(guestElo, hostElo);
-    }
-
-    const newHostElo = Math.max(0, hostElo + hostDelta);
-    const newGuestElo = Math.max(0, guestElo + guestDelta);
-
-    setUserElo(lobby.host, newHostElo);
-    setUserElo(lobby.guest, newGuestElo);
-    saveUsers();
-
-    safeSend(lobby.hostWs, {
-        type: '1V1_RESULT',
-        lobbyId: lobby.id,
-        outcome: hostOutcome,
-        delta: hostDelta,
-        newElo: newHostElo,
-        score: hostScore,
-        opponentScore: guestScore,
-        opponent: lobby.guest
-    });
-
-    safeSend(lobby.guestWs, {
-        type: '1V1_RESULT',
-        lobbyId: lobby.id,
-        outcome: guestOutcome,
-        delta: guestDelta,
-        newElo: newGuestElo,
-        score: guestScore,
-        opponentScore: hostScore,
-        opponent: lobby.host
-    });
-
-    duelLobbies.delete(lobby.id);
-    if (lobby.hostWs && lobby.hostWs.currentLobbyId === lobby.id) lobby.hostWs.currentLobbyId = null;
-    if (lobby.guestWs && lobby.guestWs.currentLobbyId === lobby.id) lobby.guestWs.currentLobbyId = null;
-
-    broadcastDuelLobbies();
-    broadcastLeaderboard();
-}
-
-function startMatch(lobby) {
-    if (!lobby || lobby.status !== 'waiting' || !lobby.guestWs || !lobby.hostWs) return;
-
-    lobby.status = 'matched';
-    lobby.results = new Map();
-
-    const startInMs = 1200;
-
-    safeSend(lobby.hostWs, {
-        type: '1V1_MATCH_STARTED',
-        lobbyId: lobby.id,
-        role: 'host',
-        opponent: lobby.guest,
-        trackUrl: lobby.trackUrl,
-        title: lobby.title,
-        duration: lobby.duration,
-        difficulty: lobby.difficulty || 'normal',
-        startInMs
-    });
-
-    safeSend(lobby.guestWs, {
-        type: '1V1_MATCH_STARTED',
-        lobbyId: lobby.id,
-        role: 'guest',
-        opponent: lobby.host,
-        trackUrl: lobby.trackUrl,
-        title: lobby.title,
-        duration: lobby.duration,
-        difficulty: lobby.difficulty || 'normal',
-        startInMs
-    });
-
-    broadcastDuelLobbies();
-}
-
-function registerInLobby(ws, lobby, role) {
-    ws.currentLobbyId = lobby.id;
-    ws.currentLobbyRole = role;
-    if (role === 'host') {
-        lobby.hostWs = ws;
+  const shuffled = seededShuffle(active);
+  const firstSeeker = shuffled[0];
+  shuffled.forEach((p, index) => {
+    p.spectator = false;
+    p.spawnLock = false;
+    p.blindUntil = 0;
+    p.safeUntil = 0;
+    p.lastTaggedAt = 0;
+    p.x = chooseSpawn(index).x;
+    p.z = chooseSpawn(index).z;
+    if (p === firstSeeker) {
+      assignRoleToPlayer(p, 'seeker');
     } else {
-        lobby.guestWs = ws;
+      assignRoleToPlayer(p, 'hider');
     }
+  });
+
+  pushAnnouncement(`Start gry! ${firstSeeker.name} zaczyna jako szukający.`);
 }
 
-wss.on('connection', (ws, req) => {
-    onlineCount += 1;
-    ws.isAlive = true;
-    ws.username = null;
-    ws.currentLobbyId = null;
-    ws.currentLobbyRole = null;
+function endIfTooFewPlayers() {
+  const active = getActivePlayers();
+  if (state.running && active.length < 2) {
+    resetToLobby('Za mało graczy. Czekam na kolejnych...');
+  }
+}
 
-    console.log(`WS connected: ${req.socket.remoteAddress || 'unknown'}`);
-    broadcastOnlineCount();
-    safeSend(ws, { type: 'ONLINE_COUNT', count: onlineCount });
-    safeSend(ws, { type: 'LEADERBOARD', data: getTopPlayers() });
-    sendDuelLobbiesTo(ws);
+function circleRectCollides(cx, cz, radius, rect) {
+  const halfW = rect.w / 2;
+  const halfD = rect.d / 2;
+  const nearestX = clamp(cx, rect.x - halfW, rect.x + halfW);
+  const nearestZ = clamp(cz, rect.z - halfD, rect.z + halfD);
+  const dx = cx - nearestX;
+  const dz = cz - nearestZ;
+  return dx * dx + dz * dz < radius * radius;
+}
 
-    ws.on('pong', () => {
-        ws.isAlive = true;
-    });
+function collides(x, z) {
+  if (x < -MAP_HALF || x > MAP_HALF || z < -MAP_HALF || z > MAP_HALF) return true;
+  return obstacleDefs.some((ob) => circleRectCollides(x, z, PLAYER_RADIUS, ob));
+}
 
-    ws.on('message', (message) => {
-        try {
-            const raw = Buffer.isBuffer(message) ? message.toString('utf8') : String(message);
-            const data = JSON.parse(raw);
+function movePlayer(player, dt) {
+  if (!player.keys) return;
 
-            if (!data || typeof data.type !== 'string') {
-                safeSend(ws, {
-                    type: 'LOGIN_ERROR',
-                    message: 'Nieprawidłowy format wiadomości.'
-                });
-                return;
-            }
+  const roleSpeed = player.speed || 0;
+  let dx = 0;
+  let dz = 0;
+  if (player.keys.w) dz -= 1;
+  if (player.keys.s) dz += 1;
+  if (player.keys.a) dx -= 1;
+  if (player.keys.d) dx += 1;
 
-            if (data.type === 'LOGIN') {
-                const username = normalizeText(data.username);
-                const password = normalizeText(data.password);
+  const len = Math.hypot(dx, dz) || 1;
+  dx /= len;
+  dz /= len;
 
-                if (username.length < 3 || password.length < 4) {
-                    safeSend(ws, {
-                        type: 'LOGIN_ERROR',
-                        message: 'Nick musi mieć min. 3 znaki, a hasło min. 4 znaki.'
-                    });
-                    return;
-                }
+  let speed = roleSpeed;
+  if (player.keys.shift) speed *= 1.22;
 
-                if (!users[username]) {
-                    users[username] = { password, points: 0, elo: 1000 };
-                    saveUsers();
-                }
+  const nextX = player.x + dx * speed * dt;
+  const nextZ = player.z + dz * speed * dt;
 
-                if (users[username].password === password) {
-                    ws.username = username;
-                    if (!Number.isFinite(Number(users[username].elo))) {
-                        users[username].elo = 1000;
-                    }
+  const canX = !collides(nextX, player.z);
+  const canZ = !collides(player.x, nextZ);
+  if (canX) player.x = nextX;
+  if (canZ) player.z = nextZ;
 
-                    saveUsers();
-                    safeSend(ws, {
-                        type: 'LOGIN_SUCCESS',
-                        username,
-                        points: Number(users[username].points) || 0,
-                        elo: Number(users[username].elo) || 1000
-                    });
+  player.x = clamp(player.x, -MAP_HALF + 1, MAP_HALF - 1);
+  player.z = clamp(player.z, -MAP_HALF + 1, MAP_HALF - 1);
+  player.lastMoveAt = Date.now();
+}
 
-                    broadcastLeaderboard();
-                } else {
-                    safeSend(ws, {
-                        type: 'LOGIN_ERROR',
-                        message: 'Nieprawidłowe hasło!'
-                    });
-                }
-                return;
-            }
+function isCatchable(target, now) {
+  return target.side === 'hider' && now >= (target.safeUntil || 0);
+}
 
-            if (data.type === 'UPDATE_POINTS') {
-                if (!ws.username || !users[ws.username]) return;
+function swapRoles(seeker, hider) {
+  const now = Date.now();
 
-                const points = Number(data.points);
-                if (!Number.isFinite(points) || points < 0) return;
+  const oldSeekerName = seeker.name;
+  const oldHiderName = hider.name;
 
-                users[ws.username].points = points;
-                saveUsers();
-                broadcastLeaderboard();
-                return;
-            }
+  assignRoleToPlayer(hider, 'seeker');
+  hider.blindUntil = now + BLIND_MS;
+  hider.safeUntil = 0;
 
-            if (data.type === 'REQUEST_1V1_LOBBIES') {
-                sendDuelLobbiesTo(ws);
-                return;
-            }
+  assignRoleToPlayer(seeker, 'hider');
+  seeker.safeUntil = now + SAFE_HIDE_MS;
+  seeker.blindUntil = 0;
 
-            if (data.type === 'CREATE_1V1_LOBBY') {
-                if (!ws.username) {
-                    safeSend(ws, { type: '1V1_ERROR', message: 'Najpierw zaloguj się.' });
-                    return;
-                }
+  const spotA = chooseSpawn(Math.floor(Math.random() * 4));
+  const spotB = chooseSpawn(Math.floor(Math.random() * 4) + 4);
+  hider.x = spotA.x;
+  hider.z = spotA.z;
+  seeker.x = spotB.x;
+  seeker.z = spotB.z;
 
-                const trackUrl = normalizeText(data.trackUrl);
-                const title = normalizeText(data.title) || 'Bez tytułu';
-                const difficulty = ['easy', 'normal', 'hard'].includes(normalizeText(data.difficulty)) ? normalizeText(data.difficulty) : 'normal';
-                const duration = Number(data.duration) || 0;
+  pushAnnouncement(`${oldSeekerName} został chowającym, a ${oldHiderName} przejął rolę szukającego!`);
+}
 
-                if (!trackUrl) {
-                    safeSend(ws, { type: '1V1_ERROR', message: 'Brak linku do muzyki.' });
-                    return;
-                }
+function catchLogic() {
+  const now = Date.now();
+  const seekers = [...state.players.values()].filter((p) => !p.spectator && p.side === 'seeker' && now >= (p.blindUntil || 0));
+  const hiders = [...state.players.values()].filter((p) => !p.spectator && p.side === 'hider');
 
-                const alreadyInLobby = getLobbyForUsername(ws.username);
-                if (alreadyInLobby) {
-                    safeSend(ws, { type: '1V1_ERROR', message: 'Masz już aktywną grę 1VS1.' });
-                    return;
-                }
-
-                const lobbyId = createLobbyId();
-                const lobby = {
-                    id: lobbyId,
-                    host: ws.username,
-                    guest: null,
-                    hostWs: ws,
-                    guestWs: null,
-                    trackUrl,
-                    title,
-                    duration,
-                    difficulty,
-                    createdAt: Date.now(),
-                    status: 'waiting',
-                    results: new Map(),
-                    resolved: false
-                };
-
-                duelLobbies.set(lobbyId, lobby);
-                registerInLobby(ws, lobby, 'host');
-
-                safeSend(ws, {
-                    type: '1V1_LOBBY_CREATED',
-                    lobbyId,
-                    title,
-                    trackUrl,
-                    duration,
-                    difficulty
-                });
-
-                broadcastDuelLobbies();
-                return;
-            }
-
-            if (data.type === 'JOIN_1V1_LOBBY') {
-                if (!ws.username) {
-                    safeSend(ws, { type: '1V1_ERROR', message: 'Najpierw zaloguj się.' });
-                    return;
-                }
-
-                const lobbyId = normalizeText(data.lobbyId);
-                const lobby = duelLobbies.get(lobbyId);
-
-                if (!lobby) {
-                    safeSend(ws, { type: '1V1_ERROR', message: 'Ta gra już nie istnieje.' });
-                    return;
-                }
-
-                if (lobby.status !== 'waiting' || !lobby.hostWs) {
-                    safeSend(ws, { type: '1V1_ERROR', message: 'Ta gra jest już zajęta.' });
-                    return;
-                }
-
-                if (lobby.host === ws.username) {
-                    safeSend(ws, { type: '1V1_ERROR', message: 'Nie możesz dołączyć do własnej gry.' });
-                    return;
-                }
-
-                const alreadyInLobby = getLobbyForUsername(ws.username);
-                if (alreadyInLobby) {
-                    safeSend(ws, { type: '1V1_ERROR', message: 'Masz już aktywną grę 1VS1.' });
-                    return;
-                }
-
-                lobby.guest = ws.username;
-                registerInLobby(ws, lobby, 'guest');
-                startMatch(lobby);
-                return;
-            }
-
-            if (data.type === 'LEAVE_1V1_LOBBY' || data.type === 'CANCEL_1V1_LOBBY') {
-                const lobbyId = normalizeText(data.lobbyId || ws.currentLobbyId);
-                if (!lobbyId) return;
-
-                const lobby = duelLobbies.get(lobbyId);
-                if (!lobby) return;
-
-                if (lobby.status === 'matched') {
-                    cancelLobby(lobby, 'anulowano');
-                } else {
-                    cancelLobby(lobby, 'anulowano');
-                }
-                return;
-            }
-
-            if (data.type === 'SUBMIT_1V1_RESULT') {
-                const lobbyId = normalizeText(data.lobbyId || ws.currentLobbyId);
-                const lobby = duelLobbies.get(lobbyId);
-                if (!lobby || lobby.status !== 'matched') return;
-                if (!ws.username || (ws.username !== lobby.host && ws.username !== lobby.guest)) return;
-
-                const score = Number(data.score);
-                if (!Number.isFinite(score) || score < 0) return;
-
-                lobby.results.set(ws.username, score);
-
-                const hostHas = lobby.results.has(lobby.host);
-                const guestHas = lobby.results.has(lobby.guest);
-
-                if (hostHas && guestHas) {
-                    finalizeMatch(lobby);
-                }
-                return;
-            }
-        } catch (e) {
-            console.error('Błąd parsowania wiadomości:', e);
-            safeSend(ws, {
-                type: 'LOGIN_ERROR',
-                message: 'Błąd danych wysłanych do serwera.'
-            });
+  for (const seeker of seekers) {
+    for (const hider of hiders) {
+      if (!isCatchable(hider, now)) continue;
+      const catchRadius = CATCH_BASE_RADIUS + (seeker.catchBonus || 0);
+      if (distance2D(seeker, hider) <= catchRadius) {
+        if (now - (hider.lastTaggedAt || 0) > 1000 && now - (seeker.lastTaggedAt || 0) > 1000) {
+          hider.lastTaggedAt = now;
+          seeker.lastTaggedAt = now;
+          swapRoles(seeker, hider);
+          return;
         }
-    });
-
-    ws.on('close', () => {
-        onlineCount = Math.max(0, onlineCount - 1);
-        broadcastOnlineCount();
-
-        // Jeśli gracz był w lobby 1v1, zamykamy lub anulujemy jego grę.
-        if (ws.currentLobbyId) {
-            const lobby = duelLobbies.get(ws.currentLobbyId);
-            if (lobby) {
-                cancelLobby(lobby, 'rozłączono');
-            }
-        }
-
-        console.log(`Rozłączono klienta. Online: ${onlineCount}`);
-    });
-
-    ws.on('error', (err) => {
-        console.error('Błąd WebSocket:', err.message);
-    });
-});
-
-server.on('upgrade', (req, socket, head) => {
-    try {
-        const url = new URL(req.url, `http://${req.headers.host}`);
-
-        if (url.pathname !== '/ws' && url.pathname !== '/') {
-            socket.destroy();
-            return;
-        }
-
-        wss.handleUpgrade(req, socket, head, (ws) => {
-            wss.emit('connection', ws, req);
-        });
-    } catch {
-        socket.destroy();
+      }
     }
+  }
+}
+
+function buildBroadcastState() {
+  const now = Date.now();
+  return {
+    running: state.running,
+    round: state.round,
+    message: state.message,
+    startedAt: state.startedAt,
+    now,
+    players: [...state.players.values()].map((p) => ({
+      id: p.id,
+      name: p.name,
+      x: p.x,
+      z: p.z,
+      side: p.side,
+      roleName: p.roleName,
+      roleDesc: p.roleDesc,
+      color: p.color,
+      spectator: !!p.spectator,
+      blindUntil: p.blindUntil || 0,
+      safeUntil: p.safeUntil || 0,
+      connected: true,
+    })),
+    announcements: state.announcements,
+    obstacles: obstacleDefs,
+    roles: ALL_ROLES,
+  };
+}
+
+function broadcastState() {
+  const payload = JSON.stringify({ type: 'state', state: buildBroadcastState() });
+  for (const client of wss.clients) {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(payload);
+    }
+  }
+}
+
+wss.on('connection', (ws) => {
+  const id = randomId();
+  const player = {
+    id,
+    ws,
+    name: `Gracz_${id.slice(0, 4)}`,
+    x: 0,
+    z: 0,
+    side: null,
+    roleName: null,
+    roleDesc: null,
+    speed: 0,
+    vision: 0,
+    catchBonus: 0,
+    stealth: 0,
+    blindUntil: 0,
+    safeUntil: 0,
+    keys: { w: false, a: false, s: false, d: false, shift: false },
+    spectator: false,
+    lastTaggedAt: 0,
+    color: '#94a3b8',
+  };
+
+  state.players.set(id, player);
+
+  ws.send(JSON.stringify({
+    type: 'welcome',
+    id,
+    roles: ALL_ROLES,
+    message: state.message,
+  }));
+
+  pushAnnouncement(`${player.name} dołączył do lobby.`);
+
+  ws.on('message', (raw) => {
+    let msg;
+    try {
+      msg = JSON.parse(raw.toString());
+    } catch {
+      return;
+    }
+
+    if (msg.type === 'join') {
+      const clean = String(msg.name || '').trim().slice(0, 18);
+      if (clean) player.name = clean;
+      player.spectator = false;
+      player.x = chooseSpawn(Math.floor(Math.random() * 7)).x;
+      player.z = chooseSpawn(Math.floor(Math.random() * 7)).z;
+      pushAnnouncement(`${player.name} gotowy do gry.`);
+      ensureGameRunning();
+      return;
+    }
+
+    if (msg.type === 'input' && msg.keys) {
+      player.keys = {
+        w: !!msg.keys.w,
+        a: !!msg.keys.a,
+        s: !!msg.keys.s,
+        d: !!msg.keys.d,
+        shift: !!msg.keys.shift,
+      };
+      return;
+    }
+
+    if (msg.type === 'ping') {
+      ws.send(JSON.stringify({ type: 'pong', t: msg.t || Date.now() }));
+    }
+  });
+
+  ws.on('close', () => {
+    state.players.delete(id);
+    pushAnnouncement(`${player.name} opuścił grę.`);
+    endIfTooFewPlayers();
+  });
 });
 
-const interval = setInterval(() => {
-    wss.clients.forEach((ws) => {
-        if (ws.isAlive === false) {
-            ws.terminate();
-            return;
-        }
+let lastTick = Date.now();
+setInterval(() => {
+  const now = Date.now();
+  const dt = Math.min(0.05, (now - lastTick) / 1000);
+  lastTick = now;
 
-        ws.isAlive = false;
-        ws.ping();
-    });
-}, 30000);
+  const active = getActivePlayers();
 
-wss.on('close', () => {
-    clearInterval(interval);
-});
+  for (const player of active) {
+    movePlayer(player, dt);
+  }
+
+  if (state.running) {
+    catchLogic();
+  } else {
+    ensureGameRunning();
+  }
+
+  for (const p of state.players.values()) {
+    if (p.side === 'seeker' && p.blindUntil && now >= p.blindUntil) {
+      p.blindUntil = 0;
+      pushAnnouncement(`${p.name} odzyskał wzrok.`);
+    }
+    if (p.side === 'hider' && p.safeUntil && now >= p.safeUntil) {
+      p.safeUntil = 0;
+      pushAnnouncement(`${p.name} może znów zostać złapany.`);
+    }
+  }
+}, 1000 / TICK_RATE);
 
 setInterval(() => {
-    saveUsers();
-}, 60_000).unref();
+  broadcastState();
+}, 1000 / STATE_BROADCAST_RATE);
 
-process.on('SIGTERM', () => {
-    saveUsers();
-    process.exit(0);
-});
-
-process.on('SIGINT', () => {
-    saveUsers();
-    process.exit(0);
-});
-
-server.listen(port, '0.0.0.0', () => {
-    console.log(`HTTP/WebSocket server nasłuchuje na porcie ${port}`);
+server.listen(PORT, () => {
+  console.log(`Hide and Role działa na porcie ${PORT}`);
 });

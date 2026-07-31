@@ -1,13 +1,17 @@
 {
-  "name": "beatclicker",
+  "name": "hide-and-role",
   "version": "1.0.0",
-  "description": "BeatClicker with login, leaderboard and 1v1 lobby",
+  "private": true,
+  "description": "Multiplayer 3D hide-and-seek game with role swapping.",
   "main": "server.js",
-  "type": "commonjs",
   "scripts": {
     "start": "node server.js"
   },
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
+    "express": "^4.21.2",
     "ws": "^8.18.0"
   }
 }
