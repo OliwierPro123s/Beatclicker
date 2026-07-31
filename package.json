@@ -1,8 +1,8 @@
 {
   "name": "hide-and-role",
-  "version": "1.1.0",
+  "version": "1.0.0",
   "private": true,
-  "description": "Multiplayer 3D hide-and-seek game with first-person movement, roles and abilities.",
+  "description": "Multiplayer 3D hide-and-seek game with role swapping.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -12,6 +12,6 @@
   },
   "dependencies": {
     "express": "^4.21.2",
-    "ws": "^8.18.3"
+    "ws": "^8.18.0"
   }
 }
