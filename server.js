@@ -1,14 +1,14 @@
 const express = require('express');
 const http = require('http');
-const path = require('path');
 const WebSocket = require('ws');
 
 const PORT = process.env.PORT || 3000;
-const TICK_RATE = 20;
-const STATE_BROADCAST_RATE = 10;
-const PLAYER_RADIUS = 0.62;
-const MAP_HALF = 28;
-const CATCH_BASE_RADIUS = 1.55;
+const TICK_RATE = 30;
+const STATE_BROADCAST_RATE = 15;
+
+const MAP_HALF = 30;
+const PLAYER_RADIUS = 0.55;
+const CATCH_BASE_RADIUS = 1.45;
 const SAFE_HIDE_MS = 30_000;
 const BLIND_MS = 30_000;
 
@@ -51,25 +51,36 @@ const HIDER_ROLES = [
 
 const ALL_ROLES = { seekers: SEEKER_ROLES, hiders: HIDER_ROLES };
 
+// Buildings + hiding spots around open paths / roads.
 const obstacleDefs = [
-  { x: -17, z: -11, w: 4, d: 4, h: 2.8, kind: 'crate' },
-  { x: -10, z: -16, w: 5, d: 3, h: 2.5, kind: 'crate' },
-  { x: -2, z: -10, w: 4, d: 5, h: 3.2, kind: 'tree' },
-  { x: 6, z: -14, w: 5, d: 5, h: 2.7, kind: 'crate' },
-  { x: 14, z: -9, w: 4, d: 4, h: 2.8, kind: 'tree' },
-  { x: 17, z: 4, w: 4, d: 4, h: 3.2, kind: 'crate' },
-  { x: 9, z: 12, w: 6, d: 3, h: 2.5, kind: 'crate' },
-  { x: -1, z: 16, w: 5, d: 5, h: 2.8, kind: 'tree' },
-  { x: -12, z: 13, w: 4, d: 4, h: 2.2, kind: 'crate' },
-  { x: -18, z: 3, w: 5, d: 5, h: 3.4, kind: 'tree' },
-  { x: -5, z: 1, w: 4, d: 4, h: 2.5, kind: 'crate' },
-  { x: 4, z: 2, w: 4, d: 6, h: 3.0, kind: 'tree' },
-  { x: 12, z: 0, w: 5, d: 4, h: 2.7, kind: 'crate' },
-  { x: -8, z: 7, w: 4, d: 4, h: 2.3, kind: 'crate' },
-  { x: 1, z: -4, w: 4, d: 4, h: 2.9, kind: 'tree' },
-  { x: 21, z: -15, w: 4, d: 4, h: 2.6, kind: 'crate' },
-  { x: -21, z: 15, w: 4, d: 4, h: 2.6, kind: 'crate' },
-  { x: 0, z: 22, w: 8, d: 2, h: 1.6, kind: 'crate' },
+  { x: -22, z: -20, w: 7, d: 7, h: 4.4, kind: 'house' },
+  { x: -10, z: -21, w: 5, d: 5, h: 3.4, kind: 'shed' },
+  { x: 6, z: -20, w: 8, d: 6, h: 4.8, kind: 'warehouse' },
+  { x: 21, z: -18, w: 6, d: 6, h: 4.1, kind: 'shop' },
+
+  { x: -21, z: -2, w: 6, d: 6, h: 4.0, kind: 'house' },
+  { x: -9, z: 0, w: 5, d: 5, h: 3.0, kind: 'crate' },
+  { x: 0, z: 0, w: 7, d: 7, h: 3.4, kind: 'market' },
+  { x: 10, z: -1, w: 5, d: 5, h: 3.2, kind: 'crate' },
+  { x: 22, z: 0, w: 6, d: 6, h: 4.2, kind: 'house' },
+
+  { x: -22, z: 18, w: 7, d: 7, h: 4.2, kind: 'warehouse' },
+  { x: -10, z: 20, w: 6, d: 6, h: 4.0, kind: 'shop' },
+  { x: 6, z: 20, w: 8, d: 6, h: 4.7, kind: 'warehouse' },
+  { x: 20, z: 20, w: 7, d: 7, h: 4.4, kind: 'house' },
+
+  { x: -16, z: 10, w: 3.6, d: 3.6, h: 2.6, kind: 'tree' },
+  { x: -5, z: 11, w: 3.2, d: 3.2, h: 2.4, kind: 'tree' },
+  { x: 7, z: 11, w: 3.2, d: 3.2, h: 2.4, kind: 'tree' },
+  { x: 16, z: 9, w: 4.0, d: 4.0, h: 2.8, kind: 'crate' },
+
+  { x: -18, z: 7, w: 5.0, d: 2.0, h: 1.4, kind: 'wall' },
+  { x: 18, z: 7, w: 5.0, d: 2.0, h: 1.4, kind: 'wall' },
+  { x: -18, z: -10, w: 4.8, d: 2.0, h: 1.4, kind: 'wall' },
+  { x: 18, z: -10, w: 4.8, d: 2.0, h: 1.4, kind: 'wall' },
+
+  { x: 0, z: 13.5, w: 12, d: 2.2, h: 1.3, kind: 'fence' },
+  { x: 0, z: -13.5, w: 12, d: 2.2, h: 1.3, kind: 'fence' },
 ];
 
 function randomId() {
@@ -100,33 +111,13 @@ function makeRoleDeck(side) {
   return seededShuffle(source.map((r) => r.name));
 }
 
-const state = {
-  running: false,
-  startedAt: 0,
-  round: 0,
-  message: 'Czekam na 2 graczy...',
-  roleDecks: {
-    seeker: makeRoleDeck('seeker'),
-    hider: makeRoleDeck('hider'),
-  },
-  players: new Map(),
-  announcements: [],
-  lastBroadcastAt: 0,
-};
-
-function pushAnnouncement(text) {
-  state.announcements.unshift({ text, at: Date.now() });
-  state.announcements = state.announcements.slice(0, 5);
-}
-
 function getRoleDefinition(side, roleName) {
   const list = side === 'seeker' ? SEEKER_ROLES : HIDER_ROLES;
   return list.find((r) => r.name === roleName) || list[0];
 }
 
-function nextRole(side) {
-  const deck = state.roleDecks[side];
-  if (!deck.length) {
+function nextRole(state, side) {
+  if (!state.roleDecks[side].length) {
     state.roleDecks[side] = makeRoleDeck(side);
   }
   return state.roleDecks[side].pop();
@@ -134,95 +125,19 @@ function nextRole(side) {
 
 function chooseSpawn(index) {
   const spots = [
-    { x: -22, z: -22 },
-    { x: 22, z: -22 },
-    { x: -22, z: 22 },
-    { x: 22, z: 22 },
-    { x: 0, z: 0 },
-    { x: -8, z: 20 },
-    { x: 10, z: -20 },
+    { x: -24, z: -24 },
+    { x: 24, z: -24 },
+    { x: -24, z: 24 },
+    { x: 24, z: 24 },
+    { x: -13, z: 0 },
+    { x: 13, z: 0 },
+    { x: 0, z: -13 },
+    { x: 0, z: 13 },
+    { x: -20, z: 10 },
+    { x: 20, z: -10 },
   ];
   const s = spots[index % spots.length];
   return { x: s.x + (Math.random() * 2 - 1), z: s.z + (Math.random() * 2 - 1) };
-}
-
-function getActivePlayers() {
-  return [...state.players.values()].filter((p) => !p.spectator);
-}
-
-function ensureGameRunning() {
-  const active = getActivePlayers();
-  if (active.length >= 2 && !state.running) {
-    startGame();
-  }
-}
-
-function resetToLobby(reason = 'Czekam na 2 graczy...') {
-  state.running = false;
-  state.startedAt = 0;
-  state.round = 0;
-  state.message = reason;
-  state.players.forEach((p) => {
-    p.spectator = false;
-    p.side = null;
-    p.roleName = null;
-    p.roleDesc = null;
-    p.speed = 0;
-    p.vision = 0;
-    p.catchBonus = 0;
-    p.stealth = 0;
-    p.blindUntil = 0;
-    p.safeUntil = 0;
-  });
-  pushAnnouncement('Gra wróciła do lobby.');
-}
-
-function assignRoleToPlayer(player, side) {
-  const roleName = nextRole(side);
-  const roleDef = getRoleDefinition(side, roleName);
-  player.side = side;
-  player.roleName = roleDef.name;
-  player.roleDesc = roleDef.desc;
-  player.speed = roleDef.speed;
-  player.vision = roleDef.vision;
-  player.catchBonus = roleDef.catchBonus || 0;
-  player.stealth = roleDef.stealth || 0;
-}
-
-function startGame() {
-  const active = getActivePlayers();
-  if (active.length < 2) return;
-
-  state.running = true;
-  state.startedAt = Date.now();
-  state.round += 1;
-  state.message = `Runda ${state.round} rozpoczęta!`;
-
-  const shuffled = seededShuffle(active);
-  const firstSeeker = shuffled[0];
-  shuffled.forEach((p, index) => {
-    p.spectator = false;
-    p.spawnLock = false;
-    p.blindUntil = 0;
-    p.safeUntil = 0;
-    p.lastTaggedAt = 0;
-    p.x = chooseSpawn(index).x;
-    p.z = chooseSpawn(index).z;
-    if (p === firstSeeker) {
-      assignRoleToPlayer(p, 'seeker');
-    } else {
-      assignRoleToPlayer(p, 'hider');
-    }
-  });
-
-  pushAnnouncement(`Start gry! ${firstSeeker.name} zaczyna jako szukający.`);
-}
-
-function endIfTooFewPlayers() {
-  const active = getActivePlayers();
-  if (state.running && active.length < 2) {
-    resetToLobby('Za mało graczy. Czekam na kolejnych...');
-  }
 }
 
 function circleRectCollides(cx, cz, radius, rect) {
@@ -240,54 +155,182 @@ function collides(x, z) {
   return obstacleDefs.some((ob) => circleRectCollides(x, z, PLAYER_RADIUS, ob));
 }
 
-function movePlayer(player, dt) {
-  if (!player.keys) return;
+function getActivePlayers(state) {
+  return [...state.players.values()].filter((p) => !p.spectator);
+}
 
-  const roleSpeed = player.speed || 0;
+function pushAnnouncement(state, text) {
+  state.announcements.unshift({ text, at: Date.now() });
+  state.announcements = state.announcements.slice(0, 6);
+}
+
+function assignRoleToPlayer(state, player, side) {
+  const roleName = nextRole(state, side);
+  const roleDef = getRoleDefinition(side, roleName);
+  player.side = side;
+  player.roleName = roleDef.name;
+  player.roleDesc = roleDef.desc;
+  player.speed = roleDef.speed;
+  player.vision = roleDef.vision;
+  player.catchBonus = roleDef.catchBonus || 0;
+  player.stealth = roleDef.stealth || 0;
+  player.color = roleDef.color;
+}
+
+function resetToLobby(state, reason = 'Czekam na 2 graczy...') {
+  state.running = false;
+  state.startedAt = 0;
+  state.round = 0;
+  state.message = reason;
+  for (const p of state.players.values()) {
+    p.spectator = false;
+    p.side = null;
+    p.roleName = null;
+    p.roleDesc = null;
+    p.speed = 0;
+    p.vision = 0;
+    p.catchBonus = 0;
+    p.stealth = 0;
+    p.blindUntil = 0;
+    p.safeUntil = 0;
+    p.vx = 0;
+    p.vz = 0;
+    p.yaw = 0;
+    p.pitch = 0;
+  }
+  pushAnnouncement(state, 'Gra wróciła do lobby.');
+}
+
+function startGame(state) {
+  const active = getActivePlayers(state);
+  if (active.length < 2) return;
+
+  state.running = true;
+  state.startedAt = Date.now();
+  state.round += 1;
+  state.message = `Runda ${state.round} rozpoczęta!`;
+
+  const shuffled = seededShuffle(active);
+  const firstSeeker = shuffled[0];
+
+  shuffled.forEach((p, index) => {
+    const spawn = chooseSpawn(index);
+    p.spectator = false;
+    p.blindUntil = 0;
+    p.safeUntil = 0;
+    p.lastTaggedAt = 0;
+    p.x = spawn.x;
+    p.z = spawn.z;
+    p.vx = 0;
+    p.vz = 0;
+    if (p === firstSeeker) {
+      assignRoleToPlayer(state, p, 'seeker');
+    } else {
+      assignRoleToPlayer(state, p, 'hider');
+    }
+  });
+
+  pushAnnouncement(state, `Start gry! ${firstSeeker.name} zaczyna jako szukający.`);
+}
+
+function ensureGameRunning(state) {
+  const active = getActivePlayers(state);
+  if (active.length >= 2 && !state.running) {
+    startGame(state);
+  }
+}
+
+function endIfTooFewPlayers(state) {
+  if (state.running && getActivePlayers(state).length < 2) {
+    resetToLobby(state, 'Za mało graczy. Czekam na kolejnych...');
+  }
+}
+
+function movePlayer(player, dt) {
+  const input = player.keys || {};
+  const hasInput = input.w || input.a || input.s || input.d;
+
+  const yaw = Number.isFinite(player.yaw) ? player.yaw : 0;
+  const cos = Math.cos(yaw);
+  const sin = Math.sin(yaw);
+
+  let forward = 0;
+  let strafe = 0;
+  if (input.w) forward += 1;
+  if (input.s) forward -= 1;
+  if (input.d) strafe += 1;
+  if (input.a) strafe -= 1;
+
   let dx = 0;
   let dz = 0;
-  if (player.keys.w) dz -= 1;
-  if (player.keys.s) dz += 1;
-  if (player.keys.a) dx -= 1;
-  if (player.keys.d) dx += 1;
+  if (hasInput) {
+    dx = forward * sin + strafe * cos;
+    dz = forward * cos - strafe * sin;
+    const len = Math.hypot(dx, dz) || 1;
+    dx /= len;
+    dz /= len;
+  }
 
-  const len = Math.hypot(dx, dz) || 1;
-  dx /= len;
-  dz /= len;
+  const sprintMult = input.shift ? 1.2 : 1;
+  const baseSpeed = player.speed || 0;
+  const targetSpeed = baseSpeed * sprintMult;
+  const desiredVX = dx * targetSpeed;
+  const desiredVZ = dz * targetSpeed;
 
-  let speed = roleSpeed;
-  if (player.keys.shift) speed *= 1.22;
+  const accel = hasInput ? 12 : 18;
+  const friction = hasInput ? 10 : 16;
 
-  const nextX = player.x + dx * speed * dt;
-  const nextZ = player.z + dz * speed * dt;
+  player.vx += (desiredVX - player.vx) * clamp(accel * dt, 0, 1);
+  player.vz += (desiredVZ - player.vz) * clamp(accel * dt, 0, 1);
+
+  if (!hasInput) {
+    player.vx *= Math.max(0, 1 - friction * dt * 0.08);
+    player.vz *= Math.max(0, 1 - friction * dt * 0.08);
+  }
+
+  const nextX = player.x + player.vx * dt;
+  const nextZ = player.z + player.vz * dt;
 
   const canX = !collides(nextX, player.z);
   const canZ = !collides(player.x, nextZ);
-  if (canX) player.x = nextX;
-  if (canZ) player.z = nextZ;
+
+  if (canX) {
+    player.x = nextX;
+  } else {
+    player.vx *= 0.12;
+  }
+
+  if (canZ) {
+    player.z = nextZ;
+  } else {
+    player.vz *= 0.12;
+  }
 
   player.x = clamp(player.x, -MAP_HALF + 1, MAP_HALF - 1);
   player.z = clamp(player.z, -MAP_HALF + 1, MAP_HALF - 1);
-  player.lastMoveAt = Date.now();
 }
 
 function isCatchable(target, now) {
   return target.side === 'hider' && now >= (target.safeUntil || 0);
 }
 
-function swapRoles(seeker, hider) {
+function swapRoles(state, seeker, hider) {
   const now = Date.now();
 
   const oldSeekerName = seeker.name;
   const oldHiderName = hider.name;
 
-  assignRoleToPlayer(hider, 'seeker');
+  assignRoleToPlayer(state, hider, 'seeker');
   hider.blindUntil = now + BLIND_MS;
   hider.safeUntil = 0;
+  hider.vx = 0;
+  hider.vz = 0;
 
-  assignRoleToPlayer(seeker, 'hider');
+  assignRoleToPlayer(state, seeker, 'hider');
   seeker.safeUntil = now + SAFE_HIDE_MS;
   seeker.blindUntil = 0;
+  seeker.vx = 0;
+  seeker.vz = 0;
 
   const spotA = chooseSpawn(Math.floor(Math.random() * 4));
   const spotB = chooseSpawn(Math.floor(Math.random() * 4) + 4);
@@ -296,10 +339,10 @@ function swapRoles(seeker, hider) {
   seeker.x = spotB.x;
   seeker.z = spotB.z;
 
-  pushAnnouncement(`${oldSeekerName} został chowającym, a ${oldHiderName} przejął rolę szukającego!`);
+  pushAnnouncement(state, `${oldSeekerName} został chowającym, a ${oldHiderName} przejął rolę szukającego!`);
 }
 
-function catchLogic() {
+function catchLogic(state) {
   const now = Date.now();
   const seekers = [...state.players.values()].filter((p) => !p.spectator && p.side === 'seeker' && now >= (p.blindUntil || 0));
   const hiders = [...state.players.values()].filter((p) => !p.spectator && p.side === 'hider');
@@ -312,7 +355,7 @@ function catchLogic() {
         if (now - (hider.lastTaggedAt || 0) > 1000 && now - (seeker.lastTaggedAt || 0) > 1000) {
           hider.lastTaggedAt = now;
           seeker.lastTaggedAt = now;
-          swapRoles(seeker, hider);
+          swapRoles(state, seeker, hider);
           return;
         }
       }
@@ -320,7 +363,7 @@ function catchLogic() {
   }
 }
 
-function buildBroadcastState() {
+function buildBroadcastState(state) {
   const now = Date.now();
   return {
     running: state.running,
@@ -333,6 +376,10 @@ function buildBroadcastState() {
       name: p.name,
       x: p.x,
       z: p.z,
+      yaw: p.yaw || 0,
+      pitch: p.pitch || 0,
+      vx: p.vx || 0,
+      vz: p.vz || 0,
       side: p.side,
       roleName: p.roleName,
       roleDesc: p.roleDesc,
@@ -348,14 +395,27 @@ function buildBroadcastState() {
   };
 }
 
-function broadcastState() {
-  const payload = JSON.stringify({ type: 'state', state: buildBroadcastState() });
+function broadcastState(state) {
+  const payload = JSON.stringify({ type: 'state', state: buildBroadcastState(state) });
   for (const client of wss.clients) {
     if (client.readyState === WebSocket.OPEN) {
       client.send(payload);
     }
   }
 }
+
+const state = {
+  running: false,
+  startedAt: 0,
+  round: 0,
+  message: 'Czekam na 2 graczy...',
+  roleDecks: {
+    seeker: makeRoleDeck('seeker'),
+    hider: makeRoleDeck('hider'),
+  },
+  players: new Map(),
+  announcements: [],
+};
 
 wss.on('connection', (ws) => {
   const id = randomId();
@@ -365,6 +425,10 @@ wss.on('connection', (ws) => {
     name: `Gracz_${id.slice(0, 4)}`,
     x: 0,
     z: 0,
+    vx: 0,
+    vz: 0,
+    yaw: 0,
+    pitch: 0,
     side: null,
     roleName: null,
     roleDesc: null,
@@ -389,7 +453,7 @@ wss.on('connection', (ws) => {
     message: state.message,
   }));
 
-  pushAnnouncement(`${player.name} dołączył do lobby.`);
+  pushAnnouncement(state, `${player.name} dołączył do lobby.`);
 
   ws.on('message', (raw) => {
     let msg;
@@ -403,21 +467,25 @@ wss.on('connection', (ws) => {
       const clean = String(msg.name || '').trim().slice(0, 18);
       if (clean) player.name = clean;
       player.spectator = false;
-      player.x = chooseSpawn(Math.floor(Math.random() * 7)).x;
-      player.z = chooseSpawn(Math.floor(Math.random() * 7)).z;
-      pushAnnouncement(`${player.name} gotowy do gry.`);
-      ensureGameRunning();
+      const spawn = chooseSpawn(Math.floor(Math.random() * 10));
+      player.x = spawn.x;
+      player.z = spawn.z;
+      pushAnnouncement(state, `${player.name} gotowy do gry.`);
+      ensureGameRunning(state);
       return;
     }
 
-    if (msg.type === 'input' && msg.keys) {
+    if (msg.type === 'input') {
+      const keys = msg.keys || {};
       player.keys = {
-        w: !!msg.keys.w,
-        a: !!msg.keys.a,
-        s: !!msg.keys.s,
-        d: !!msg.keys.d,
-        shift: !!msg.keys.shift,
+        w: !!keys.w,
+        a: !!keys.a,
+        s: !!keys.s,
+        d: !!keys.d,
+        shift: !!keys.shift,
       };
+      if (Number.isFinite(msg.yaw)) player.yaw = msg.yaw;
+      if (Number.isFinite(msg.pitch)) player.pitch = msg.pitch;
       return;
     }
 
@@ -428,9 +496,11 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     state.players.delete(id);
-    pushAnnouncement(`${player.name} opuścił grę.`);
-    endIfTooFewPlayers();
+    pushAnnouncement(state, `${player.name} opuścił grę.`);
+    endIfTooFewPlayers(state);
   });
+
+  ensureGameRunning(state);
 });
 
 let lastTick = Date.now();
@@ -439,32 +509,30 @@ setInterval(() => {
   const dt = Math.min(0.05, (now - lastTick) / 1000);
   lastTick = now;
 
-  const active = getActivePlayers();
-
-  for (const player of active) {
+  for (const player of getActivePlayers(state)) {
     movePlayer(player, dt);
   }
 
   if (state.running) {
-    catchLogic();
+    catchLogic(state);
   } else {
-    ensureGameRunning();
+    ensureGameRunning(state);
   }
 
   for (const p of state.players.values()) {
     if (p.side === 'seeker' && p.blindUntil && now >= p.blindUntil) {
       p.blindUntil = 0;
-      pushAnnouncement(`${p.name} odzyskał wzrok.`);
+      pushAnnouncement(state, `${p.name} odzyskał wzrok.`);
     }
     if (p.side === 'hider' && p.safeUntil && now >= p.safeUntil) {
       p.safeUntil = 0;
-      pushAnnouncement(`${p.name} może znów zostać złapany.`);
+      pushAnnouncement(state, `${p.name} może znów zostać złapany.`);
     }
   }
 }, 1000 / TICK_RATE);
 
 setInterval(() => {
-  broadcastState();
+  broadcastState(state);
 }, 1000 / STATE_BROADCAST_RATE);
 
 server.listen(PORT, () => {
