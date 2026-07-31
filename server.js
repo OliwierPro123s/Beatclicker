@@ -165,6 +165,28 @@ function chooseSpawn(index) {
   return { x: s.x + (Math.random() * 2 - 1), z: s.z + (Math.random() * 2 - 1) };
 }
 
+function findFreeSpawn(index) {
+  const base = chooseSpawn(index);
+  const rings = [0, 1.25, 2.5, 3.75, 5];
+  for (const r of rings) {
+    const checks = r === 0
+      ? [{ x: base.x, z: base.z }]
+      : Array.from({ length: 12 }, (_v, i) => {
+          const ang = (Math.PI * 2 * i) / 12;
+          return {
+            x: base.x + Math.cos(ang) * r,
+            z: base.z + Math.sin(ang) * r,
+          };
+        });
+    for (const p of checks) {
+      if (!collides(p.x, p.z)) {
+        return { x: p.x, z: p.z };
+      }
+    }
+  }
+  return { x: base.x, z: base.z };
+}
+
 function circleRectCollides(cx, cz, radius, rect) {
   const halfW = rect.w / 2;
   const halfD = rect.d / 2;
@@ -239,7 +261,7 @@ function startGame(state) {
   const firstSeeker = shuffled[0];
 
   shuffled.forEach((p, index) => {
-    const spawn = chooseSpawn(index);
+    const spawn = findFreeSpawn(index);
     p.spectator = false;
     p.blindUntil = 0;
     p.safeUntil = 0;
@@ -356,8 +378,8 @@ function swapRoles(state, seeker, hider) {
   seeker.vx = 0;
   seeker.vz = 0;
 
-  const spotA = chooseSpawn(Math.floor(Math.random() * 4));
-  const spotB = chooseSpawn(Math.floor(Math.random() * 4) + 4);
+  const spotA = findFreeSpawn(Math.floor(Math.random() * 4));
+  const spotB = findFreeSpawn(Math.floor(Math.random() * 4) + 4);
   hider.x = spotA.x;
   hider.z = spotA.z;
   seeker.x = spotB.x;
@@ -463,7 +485,7 @@ wss.on('connection', (ws) => {
     blindUntil: 0,
     safeUntil: 0,
     keys: { w: false, a: false, s: false, d: false, shift: false },
-    spectator: false,
+    spectator: true,
     lastTaggedAt: 0,
     color: '#94a3b8',
   };
@@ -491,11 +513,15 @@ wss.on('connection', (ws) => {
       const clean = String(msg.name || '').trim().slice(0, 18);
       if (clean) player.name = clean;
       player.spectator = false;
-      const spawn = chooseSpawn(Math.floor(Math.random() * 10));
+      player.keys = { w: false, a: false, s: false, d: false, shift: false };
+      player.blindUntil = 0;
+      player.safeUntil = 0;
+      const spawn = findFreeSpawn(Math.floor(Math.random() * 10));
       player.x = spawn.x;
       player.z = spawn.z;
       pushAnnouncement(state, `${player.name} gotowy do gry.`);
       ensureGameRunning(state);
+      ws.send(JSON.stringify({ type: 'joined', name: player.name }));
       return;
     }
 

@@ -557,7 +557,8 @@
     let ws = null;
     let wsOpen = false;
     let reconnectTimer = null;
-    let pendingJoinName = '';
+    let desiredJoinName = '';
+    let joinedConfirmed = false;
 
     function connectSocket() {
       wsOpen = false;
@@ -566,9 +567,8 @@
       ws.addEventListener('open', () => {
         wsOpen = true;
         ui.menuState.textContent = 'Połączono';
-        if (pendingJoinName) {
-          ws.send(JSON.stringify({ type: 'join', name: pendingJoinName }));
-          pendingJoinName = '';
+        if (desiredJoinName) {
+          ws.send(JSON.stringify({ type: 'join', name: desiredJoinName }));
         }
       });
 
@@ -576,6 +576,12 @@
         const msg = JSON.parse(ev.data);
         if (msg.type === 'welcome') {
           myId = msg.id;
+        } else if (msg.type === 'joined') {
+          joinedConfirmed = true;
+          ui.menu.style.display = 'none';
+          ui.hud.style.display = 'flex';
+          ui.menuState.textContent = 'Dołączono';
+          canvas.requestPointerLock?.();
         } else if (msg.type === 'state') {
           latestState = msg.state;
           lastStateSeenAt = Date.now();
@@ -585,7 +591,10 @@
 
       ws.addEventListener('close', () => {
         wsOpen = false;
+        joinedConfirmed = false;
         ui.menuState.textContent = 'Rozłączono';
+        ui.menu.style.display = 'flex';
+        ui.hud.style.display = 'none';
         showToast('Połączenie z serwerem zostało przerwane. Łączenie ponownie...');
         if (reconnectTimer) clearTimeout(reconnectTimer);
         reconnectTimer = setTimeout(connectSocket, 1200);
@@ -1520,14 +1529,14 @@
       const name = ui.nameInput.value.trim();
       localName = name || 'Gracz';
       localStorage.setItem('hide-and-role-name', localName);
-      pendingJoinName = localName;
+      desiredJoinName = localName;
+      joinedConfirmed = false;
+      ui.menuState.textContent = 'Łączenie...';
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'join', name: localName }));
-        pendingJoinName = '';
       }
-      ui.menu.style.display = 'none';
-      ui.hud.style.display = 'flex';
-      canvas.requestPointerLock?.();
+      ui.menu.style.display = 'flex';
+      ui.hud.style.display = 'none';
     });
 
     ui.refreshBtn.addEventListener('click', () => {
@@ -1612,6 +1621,13 @@
     }
     ui.nameInput.addEventListener('input', () => {
       localStorage.setItem('hide-and-role-name', ui.nameInput.value);
+    });
+
+    ui.nameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        ui.playBtn.click();
+      }
     });
   </script>
 </body>
